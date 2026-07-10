@@ -1,0 +1,1101 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AFW Food Cost &amp; Pricing Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,700;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&family=Spline+Sans+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --paper:#F4EEE1; --paper-2:#EDE4D2; --card:#FBF7EE;
+  --ink:#221C14; --ink-soft:#6F6150; --line:#DBD0B9;
+  --herb:#38563F; --herb-deep:#284031; --clay:#BE6A40;
+  --turmeric:#CF9A33; --brick:#A93B2C;
+  --good-bg:#E7EFE5; --warn-bg:#F7EDD2; --bad-bg:#F4DED9;
+  --shadow:0 1px 2px rgba(34,28,20,.06),0 8px 28px rgba(34,28,20,.07);
+  --r:14px;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:var(--paper); color:var(--ink);
+  font-family:"Hanken Grotesk",system-ui,sans-serif;
+  font-size:15px; line-height:1.5;
+}
+.mono{font-family:"Spline Sans Mono",ui-monospace,monospace;font-variant-numeric:tabular-nums}
+h1,h2,h3{font-family:"Fraunces",Georgia,serif;font-weight:600;line-height:1.1;margin:0}
+button{font-family:inherit;cursor:pointer}
+input,select{font-family:inherit;font-size:15px}
+input:focus-visible,select:focus-visible,button:focus-visible{outline:2.5px solid var(--herb);outline-offset:2px}
+
+/* ---------- Header ---------- */
+.masthead{
+  background:var(--herb-deep); color:#F4EEE1;
+  padding:26px clamp(16px,4vw,40px) 30px;
+  border-bottom:3px solid var(--clay);
+}
+.eyebrow{font-size:12px;letter-spacing:.18em;text-transform:uppercase;color:#D8C9A6;font-weight:600}
+.masthead h1{font-size:clamp(28px,5vw,44px);margin:6px 0 6px;color:#FBF7EE;font-weight:600}
+.masthead h1 em{font-style:italic;color:var(--turmeric)}
+.masthead p{margin:0;max-width:56ch;color:#E4DAC2;font-size:15px}
+.brandline{margin-top:14px;font-size:12px;letter-spacing:.14em;text-transform:uppercase;color:#B6A77F}
+.brandline b{color:#E4DAC2;font-weight:600}
+
+/* ---------- Layout ---------- */
+.wrap{max-width:1240px;margin:0 auto;padding:clamp(16px,3vw,32px);
+  display:grid;grid-template-columns:1fr;gap:24px}
+@media(min-width:1000px){.wrap{grid-template-columns:minmax(0,1fr) 430px;align-items:start}}
+
+.panel{background:var(--card);border:1px solid var(--line);border-radius:var(--r);
+  box-shadow:var(--shadow);overflow:hidden}
+.panel + .panel{margin-top:22px}
+.phead{padding:16px 20px 14px;border-bottom:1px solid var(--line);display:flex;align-items:baseline;gap:12px}
+.step{font-family:"Fraunces",serif;font-size:13px;font-weight:600;color:#fff;background:var(--clay);
+  width:26px;height:26px;border-radius:50%;display:inline-grid;place-items:center;flex:none;
+  position:relative;top:2px}
+.phead h2{font-size:20px}
+.phead .hint{font-size:12.5px;color:var(--ink-soft);margin-left:auto;text-align:right;max-width:30ch}
+.pbody{padding:18px 20px 22px}
+
+/* ---------- Form bits ---------- */
+label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);
+  letter-spacing:.02em;margin-bottom:5px}
+.field input,.field select{width:100%;padding:10px 11px;border:1px solid var(--line);
+  border-radius:9px;background:#fff;color:var(--ink)}
+.field input::placeholder{color:#B4A68C}
+.row{display:grid;gap:12px}
+.row.two{grid-template-columns:1fr 1fr}
+.row.basics{grid-template-columns:2fr 1fr 1.2fr}
+@media(max-width:560px){.row.two,.row.basics{grid-template-columns:1fr}}
+
+.adorned{position:relative}
+.adorned .pre{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--ink-soft);
+  font-family:"Spline Sans Mono",monospace;pointer-events:none}
+.adorned input{padding-left:24px}
+.adorned.pct .post{position:absolute;right:11px;top:50%;transform:translateY(-50%);color:var(--ink-soft);
+  font-family:"Spline Sans Mono",monospace;pointer-events:none}
+
+/* ---------- Business type selector ---------- */
+.types{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+@media(min-width:680px){.types{grid-template-columns:repeat(4,1fr)}}
+.type{border:1.5px solid var(--line);border-radius:11px;background:#fff;padding:13px 12px;text-align:left;
+  transition:.15s;color:var(--ink)}
+.type:hover{border-color:var(--clay)}
+.type .ico{font-size:22px;line-height:1}
+.type .nm{font-weight:700;font-size:14px;margin:7px 0 2px}
+.type .dsc{font-size:11.5px;color:var(--ink-soft);line-height:1.35}
+.type[aria-pressed="true"]{border-color:var(--herb);background:var(--good-bg);box-shadow:0 0 0 3px rgba(56,86,63,.12)}
+
+/* ---------- Repeatable rows ---------- */
+.items{display:flex;flex-direction:column;gap:14px}
+.item{border:1px solid var(--line);border-radius:11px;padding:13px;background:#fff;position:relative}
+.item .grid{display:grid;gap:10px}
+.ing-grid{grid-template-columns:1.6fr .9fr 1fr 1fr .8fr}
+.ing-grid .lbl-purchase{grid-column:span 2}
+@media(max-width:760px){.ing-grid{grid-template-columns:1fr 1fr}}
+.pack-grid{grid-template-columns:2.5fr 1fr}
+.help-grid{grid-template-columns:1.6fr .8fr 1fr}
+@media(max-width:760px){.help-grid{grid-template-columns:1fr 1fr}}
+.hero{display:flex;align-items:center;justify-content:space-between;gap:12px;background:#fff;border:1.5px solid var(--herb);border-radius:11px;padding:12px 14px}
+.herop{font-family:"Fraunces",serif;font-size:26px;font-weight:600;color:var(--herb);line-height:1}
+.usebtn{flex:none;border:1.5px solid var(--herb);background:var(--herb);color:#FBF7EE;font-weight:600;font-size:13px;padding:9px 13px;border-radius:9px;white-space:nowrap}
+.usebtn:hover{background:var(--herb-deep)}
+.del{position:absolute;top:9px;right:9px;border:none;background:transparent;color:#B4A68C;
+  font-size:18px;line-height:1;padding:4px 7px;border-radius:7px}
+.del:hover{color:var(--brick);background:var(--bad-bg)}
+.subunit{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.sub3{display:grid;grid-template-columns:1.1fr .9fr 1fr;gap:8px}
+.needs{margin-top:9px;font-size:12px;color:#7a4a1f;background:var(--warn-bg);border-radius:8px;padding:7px 10px;display:none}
+.needs.show{display:block}
+.carry{margin-top:10px;font-size:12px;color:var(--herb);background:var(--good-bg);
+  border-radius:8px;padding:7px 10px;display:none}
+.carry.show{display:block}
+.carry b{font-weight:700}
+.addbtn{margin-top:14px;border:1.5px dashed var(--line);background:transparent;color:var(--herb);
+  font-weight:600;padding:10px;border-radius:10px;width:100%;font-size:14px}
+.addbtn:hover{border-color:var(--herb);background:var(--good-bg)}
+
+.note{font-size:12.5px;color:var(--ink-soft);background:var(--paper-2);border-radius:9px;
+  padding:11px 13px;margin-top:14px;line-height:1.45}
+.note b{color:var(--ink)}
+.itemcost{font-family:"Spline Sans Mono",monospace;font-size:13px;color:var(--herb);font-weight:600;
+  margin-top:9px}
+
+/* hide sections not relevant to business type */
+.cond{display:none}
+.cond.on{display:block}
+
+/* ---------- Results / cost card ---------- */
+.results{position:sticky;top:18px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:var(--r);box-shadow:var(--shadow);overflow:hidden}
+.card-top{background:var(--herb);color:#FBF7EE;padding:18px 20px}
+.card-top .ce{font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#CDBF9C;font-weight:600}
+.card-top .pn{font-family:"Fraunces",serif;font-size:22px;font-weight:600;margin-top:3px}
+.card-top .yld{font-size:12.5px;color:#DDD2B6;margin-top:2px}
+
+.headline{padding:18px 20px;border-bottom:1px solid var(--line);display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.metric .k{font-size:11.5px;letter-spacing:.04em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+.metric .v{font-family:"Fraunces",serif;font-size:30px;font-weight:600;line-height:1.05;margin-top:3px}
+.metric .v small{font-size:14px;color:var(--ink-soft);font-family:"Hanken Grotesk",sans-serif;font-weight:500}
+.metric.profit .v{color:var(--herb)}
+.metric.profit.neg .v{color:var(--brick)}
+
+/* waterfall */
+.water{padding:16px 20px;border-bottom:1px solid var(--line)}
+.water h3{font-size:13px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-soft);font-weight:700;margin-bottom:4px;font-family:"Hanken Grotesk",sans-serif}
+.water .sub{font-size:12px;color:var(--ink-soft);margin-bottom:12px}
+.bar{display:flex;height:30px;border-radius:7px;overflow:hidden;border:1px solid var(--line);background:#fff}
+.bar span{display:block;height:100%}
+.seg-ing{background:var(--clay)}
+.seg-pack{background:#D89B6A}
+.seg-kit{background:#7C8B5A}
+.seg-lab{background:var(--turmeric)}
+.seg-extra{background:#9C7B53}
+.seg-profit{background:var(--herb)}
+.bar.loss .seg-profit{background:var(--brick)}
+.legend{display:flex;flex-wrap:wrap;gap:9px 16px;margin-top:12px}
+.legend div{display:flex;align-items:center;gap:7px;font-size:12.5px;color:var(--ink)}
+.legend i{width:11px;height:11px;border-radius:3px;flex:none}
+.legend .amt{margin-left:auto;font-family:"Spline Sans Mono",monospace;color:var(--ink-soft)}
+.legend div.hi{font-weight:700}
+.ledger{margin-top:14px;border-top:1px dashed var(--line);padding-top:10px}
+.ledger .lr{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;font-family:"Spline Sans Mono",monospace}
+.ledger .lr.tot{border-top:1px solid var(--line);margin-top:5px;padding-top:7px;font-weight:600}
+.ledger .lr .lbl{font-family:"Hanken Grotesk",sans-serif}
+
+/* price controls */
+.price{padding:16px 20px;border-bottom:1px solid var(--line)}
+.price h3{font-size:13px;letter-spacing:.03em;text-transform:uppercase;color:var(--ink-soft);font-weight:700;margin-bottom:11px;font-family:"Hanken Grotesk",sans-serif}
+.priceset{display:grid;grid-template-columns:1fr 1fr;gap:11px;margin-bottom:13px}
+.suggest{background:var(--paper-2);border-radius:10px;padding:12px 13px}
+.suggest .st{font-size:11.5px;text-transform:uppercase;letter-spacing:.04em;color:var(--ink-soft);font-weight:600;margin-bottom:7px}
+.suggest .sl{display:flex;justify-content:space-between;font-size:13px;padding:3px 0;align-items:baseline}
+.suggest .sl b{font-family:"Spline Sans Mono",monospace;font-weight:600;color:var(--herb)}
+.suggest .sl .nm{color:var(--ink)}
+.suggest .ladder{font-size:11.5px;color:var(--ink-soft);margin-top:8px;line-height:1.5;border-top:1px dashed var(--line);padding-top:8px}
+
+/* checks + flags */
+.checks{padding:14px 20px 6px}
+.chk{display:flex;gap:9px;font-size:12.5px;padding:7px 10px;border-radius:9px;margin-bottom:8px;line-height:1.4}
+.chk .dot{flex:none;font-weight:700}
+.chk.good{background:var(--good-bg)} .chk.good .dot{color:var(--herb)}
+.chk.warn{background:var(--warn-bg)} .chk.warn .dot{color:var(--clay)}
+.chk.bad{background:var(--bad-bg)} .chk.bad .dot{color:var(--brick)}
+.chk b{font-weight:700}
+
+.actions{padding:14px 20px 20px;display:flex;gap:10px;flex-wrap:wrap}
+.actions button{flex:1;min-width:120px;padding:11px;border-radius:10px;font-weight:600;font-size:13.5px;border:1.5px solid var(--herb)}
+.btn-print{background:var(--herb);color:#FBF7EE}
+.btn-print:hover{background:var(--herb-deep)}
+.btn-ghost{background:transparent;color:var(--herb)}
+.btn-ghost:hover{background:var(--good-bg)}
+
+.disclaim{font-size:11.5px;color:var(--ink-soft);padding:0 20px 18px;line-height:1.45}
+
+.empty{padding:40px 22px;text-align:center;color:var(--ink-soft)}
+.empty .big{font-family:"Fraunces",serif;font-size:19px;color:var(--ink);margin-bottom:6px}
+
+/* mobile mini-bar */
+.minibar{position:fixed;left:0;right:0;bottom:0;background:var(--herb-deep);color:#FBF7EE;display:none;z-index:50;padding:10px 16px;justify-content:space-between;align-items:center;gap:14px;border:none;width:100%;text-align:left;box-shadow:0 -4px 16px rgba(34,28,20,.28);font-size:12px}
+.minibar .mk{text-transform:uppercase;letter-spacing:.06em;color:#CDBF9C;font-weight:600;font-size:10.5px}
+.minibar .mv{font-family:"Fraunces",serif;font-size:19px;font-weight:600;line-height:1.1}
+.minibar .mv.neg{color:#F2BCB0}
+.minibar .go{margin-left:auto;color:#CDBF9C;font-weight:600}
+@media(max-width:999px){
+  .minibar.show{display:flex}
+  body.pad-minibar{padding-bottom:70px}
+}
+
+/* print-only card */
+#printArea{display:none}
+@media print{
+  @page{margin:14mm}
+  body{background:#fff}
+  .masthead,.wrap,.minibar{display:none !important}
+  #printArea{display:block}
+}
+</style>
+</head>
+<body>
+
+<header class="masthead">
+  <div class="eyebrow">Akron Food Works · Member Tool</div>
+  <h1>Food Cost &amp; <em>Pricing</em> Builder</h1>
+  <p>Cost a recipe honestly — ingredients, packaging, your time, and kitchen hours — then price it so the business actually makes a profit, not just a paycheck.</p>
+  <div class="brandline"><b>Create</b> · Incubate · Elevate</div>
+</header>
+
+<div class="wrap">
+
+  <!-- ============ INPUT COLUMN ============ -->
+  <div class="col-input">
+
+    <!-- STEP 1 — business type -->
+    <section class="panel">
+      <div class="phead"><span class="step">1</span><h2>What kind of food business?</h2>
+        <span class="hint">This sets your target numbers and the costs that matter.</span></div>
+      <div class="pbody">
+        <div class="types" id="types">
+          <button class="type" data-type="preorder" aria-pressed="false">
+            <div class="ico">🍱</div><div class="nm">Prepared meals / preorders</div>
+            <div class="dsc">Meals or treats sold direct — markets, pickups, standing orders</div></button>
+          <button class="type" data-type="catering" aria-pressed="false">
+            <div class="ico">🍽️</div><div class="nm">Catering / events</div>
+            <div class="dsc">Priced per head, with rentals, transport &amp; service</div></button>
+          <button class="type" data-type="truck" aria-pressed="false">
+            <div class="ico">🚚</div><div class="nm">Food truck / mobile</div>
+            <div class="dsc">Service items prepped at the commissary</div></button>
+          <button class="type" data-type="packaged" aria-pressed="false">
+            <div class="ico">🫙</div><div class="nm">Packaged / shelf goods</div>
+            <div class="dsc">Jarred, baked or shelf-stable for wholesale or a shelf</div></button>
+        </div>
+        <div class="note" id="typeNote">Pick a type to begin. You can switch any time — your recipe stays put.</div>
+      </div>
+    </section>
+
+    <!-- STEP 2 — basics -->
+    <section class="panel">
+      <div class="phead"><span class="step">2</span><h2 id="step2Title">The recipe &amp; what it yields</h2>
+        <span class="hint" id="step2Hint">One full batch as you actually make it.</span></div>
+      <div class="pbody">
+        <div class="row basics">
+          <div class="field"><label id="productLabel">Product name</label>
+            <input id="productName" placeholder="e.g. Brown butter chocolate chip cookie"></div>
+          <div class="field"><label id="yieldQtyLabel">Batch makes</label>
+            <input id="yieldQty" type="number" min="1" inputmode="decimal" placeholder="24"></div>
+          <div class="field" id="unitNameField"><label>Unit name</label>
+            <input id="yieldUnit" placeholder="cookies"></div>
+        </div>
+        <div class="note" id="yieldNote">A "unit" is one thing a customer buys — a cookie, a jar, a boxed meal, or one guest served.</div>
+      </div>
+    </section>
+
+    <!-- STEP 3 — ingredients -->
+    <section class="panel">
+      <div class="phead"><span class="step">3</span><h2 id="ingTitle">Ingredients</h2>
+        <span class="hint" id="ingHint">Enter each one as you <b>bought</b> it. Bulk cases are handled for you.</span></div>
+      <div class="pbody">
+        <div class="note" id="cateringIngNote" style="display:none;margin-top:0;margin-bottom:14px">Serving several dishes? List the ingredients for <b>all</b> of them here and tag each with its dish (Lasagna, Gumbo…). The tool totals the food and divides by your guest count. Don't track every gram — get the big-cost items right.</div>
+        <div class="items" id="ingList"></div>
+        <button class="addbtn" id="addIng">+ Add ingredient</button>
+        <div class="suggest" id="dishSummary" style="display:none;margin-top:14px"></div>
+        <div class="note"><b>Trim / yield %</b> is how much of what you buy is actually usable after peeling, trimming, or loss — 100% for flour, maybe 70% for whole produce or bone-in meat. Enter the <b>usable</b> amount in the recipe field above, and the trim % quietly adds back the cost of what you threw away. That hidden cost is where most pricing goes wrong.</div>
+      </div>
+    </section>
+
+    <!-- STEP 4 — packaging -->
+    <section class="panel">
+      <div class="phead"><span class="step">4</span><h2>Packaging &amp; disposables</h2>
+        <span class="hint">Cost of what each single unit ships in.</span></div>
+      <div class="pbody">
+        <div class="items" id="packList"></div>
+        <button class="addbtn" id="addPack">+ Add packaging item</button>
+        <div class="note"><b>Disposables belong here</b> — foil pans, deli containers, paper, bags, labels — they're part of every unit's cost. <b>Durable smallwares</b> (sheet pans, a mixer, a slicer) are one-time business purchases, <b>not</b> per-unit costs — leave those out for now. Sorting and tracking those is a separate tool coming later.</div>
+      </div>
+    </section>
+
+    <!-- STEP 5 — labor -->
+    <section class="panel">
+      <div class="phead"><span class="step">5</span><h2>Your time &amp; any help</h2>
+        <span class="hint">Pay yourself — even if you reinvest it.</span></div>
+      <div class="pbody">
+        <div class="row two">
+          <div class="field"><label>Your hours for this batch</label>
+            <input id="ownerHours" type="number" min="0" step="0.25" inputmode="decimal" placeholder="3"></div>
+          <div class="field"><label>Pay yourself ($/hr)</label>
+            <div class="adorned"><span class="pre">$</span><input id="ownerRate" type="number" min="0" step="0.25" inputmode="decimal" value="20"></div></div>
+        </div>
+        <div class="row two" style="margin-top:16px">
+          <div style="grid-column:1 / -1">
+            <label style="margin-bottom:8px">Anyone helping? — kitchen prep, setup, on-site service, delivery</label>
+            <div class="items" id="helpList"></div>
+            <button class="addbtn" id="addHelp">+ Add a helper</button>
+          </div>
+        </div>
+        <div class="note">If a client pays $750, the part you keep is what's left <b>after</b> your own time is paid for. Putting your hours in here is what turns "what's in my pocket today" into a real margin you can plan on. Reinvesting the difference is then your choice — not a hidden subsidy.</div>
+      </div>
+    </section>
+
+    <!-- STEP 6 — kitchen -->
+    <section class="panel">
+      <div class="phead"><span class="step">6</span><h2>Kitchen time</h2>
+        <span class="hint">Your booked hours at AFW, spread across the batch.</span></div>
+      <div class="pbody">
+        <div class="row two">
+          <div class="field"><label>Kitchen hours for this batch</label>
+            <input id="kitchenHours" type="number" min="0" step="0.25" inputmode="decimal" placeholder="2"></div>
+          <div class="field"><label>Space &amp; rate</label>
+            <select id="kitchenRateSel">
+              <option value="19.25">Prevailing — $19.25/hr</option>
+              <option value="25">Create, whole room — $25/hr</option>
+              <option value="17.25">Off-peak / late night — $17.25/hr</option>
+              <option value="custom">Enter a custom rate…</option>
+            </select></div>
+        </div>
+        <div class="field cond" id="customRateField" style="margin-top:12px">
+          <label>Custom rate ($/hr)</label>
+          <div class="adorned"><span class="pre">$</span><input id="kitchenRateCustom" type="number" min="0" step="0.25" inputmode="decimal" placeholder="19.25"></div>
+        </div>
+        <div class="note cond" id="truckNote">Food trucks: AFW asks for a minimum of <b>8 commissary hours a month</b>. If a batch uses less, you'll still pay toward that floor — worth remembering when you set volume.</div>
+      </div>
+    </section>
+
+    <!-- STEP 7 — catering extras + fees (conditional) -->
+    <section class="panel cond" id="cateringPanel">
+      <div class="phead"><span class="step">7</span><h2>Event extras &amp; fees</h2>
+        <span class="hint">Rental costs vs. fees you bill the client — kept separate.</span></div>
+      <div class="pbody">
+        <label style="margin-bottom:8px">Extras you pay for — rentals, linens, chafers, flowers…</label>
+        <div class="items" id="extraList"></div>
+        <button class="addbtn" id="addExtra">+ Add an extra</button>
+        <div class="note">These are <b>costs</b>. The tool spreads them across your guests, so they count against your margin.</div>
+        <div class="field" style="margin-top:18px"><label>Delivery / service fee billed to the client ($)</label>
+          <div class="adorned"><span class="pre">$</span><input id="serviceFee" type="number" min="0" step="1" inputmode="decimal" placeholder="0"></div></div>
+        <div class="note"><b>Separate from the extras above.</b> A delivery or service fee is <b>revenue</b> you add on top of the per-guest price. It shows in the client's quote total but stays out of the per-guest margin, so it won't distort your food pricing.</div>
+      </div>
+    </section>
+
+    <!-- STEP — price (auto-numbered) -->
+    <section class="panel">
+      <div class="phead"><span class="step"></span><h2>Price it</h2>
+        <span class="hint">Set a target, see what to charge, then pick your price.</span></div>
+      <div class="pbody">
+        <div class="row two">
+          <div class="field"><label id="targetLabel">Target food cost %</label>
+            <div class="adorned pct"><input id="targetPct" type="number" min="1" step="1" inputmode="decimal"><span class="post">%</span></div></div>
+          <div class="field"><label id="priceLabel">Your price / unit</label>
+            <div class="adorned"><span class="pre">$</span><input id="price" type="number" min="0" step="0.25" inputmode="decimal" placeholder="0.00"></div></div>
+        </div>
+        <div class="suggest" id="suggest" style="margin-top:14px"></div>
+      </div>
+    </section>
+
+  </div>
+  <div class="results">
+    <div class="card" id="card">
+      <div class="empty" id="emptyState">
+        <div class="big">Your cost card builds here</div>
+        <div>Pick a business type and add a few ingredients to see your true cost per unit, a suggested price, and where every dollar goes.</div>
+      </div>
+      <div id="liveCard" style="display:none">
+        <div class="card-top">
+          <div class="ce" id="cardType">—</div>
+          <div class="pn" id="cardName">Untitled product</div>
+          <div class="yld" id="cardYield"></div>
+        </div>
+
+        <div class="headline">
+          <div class="metric"><div class="k">True cost / unit</div><div class="v mono" id="mCost">$0.00</div></div>
+          <div class="metric profit"><div class="k" id="mProfitK">Profit / unit</div><div class="v mono" id="mProfit">$0.00</div></div>
+        </div>
+
+        <div class="water">
+          <h3>Where every dollar goes</h3>
+          <div class="sub" id="waterSub">At your set price, per full batch.</div>
+          <div class="bar" id="bar"></div>
+          <div class="legend" id="legend"></div>
+          <div class="ledger" id="ledger"></div>
+        </div>
+
+        <div class="suggest" id="quote" style="display:none;margin:16px 20px 0"></div>
+
+        <div class="checks" id="checks"></div>
+
+        <div class="actions">
+          <button class="btn-print" id="btnPrint">Print / save cost card</button>
+          <button class="btn-ghost" id="btnSave">Save recipe file</button>
+          <button class="btn-ghost" id="btnLoad">Open saved recipe</button>
+          <input type="file" id="fileInput" accept="application/json" hidden>
+        </div>
+        <div class="disclaim">Figures are planning estimates from what you enter — a guide for pricing decisions, not accounting. Save your recipe to your own files (OneDrive works well); nothing is stored here.</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<button class="minibar" id="miniBar">
+  <span><span class="mk">Cost / unit</span><br><span class="mv" id="mbCost">$0.00</span></span>
+  <span><span class="mk" id="mbProfitK">Profit / unit</span><br><span class="mv" id="mbProfit">—</span></span>
+  <span class="go">See details ↓</span>
+</button>
+
+<div id="printArea"></div>
+
+<script>
+"use strict";
+
+/* ---------- unit conversion ---------- */
+const FAM = {
+  weight:{base:"g",units:{g:1,kg:1000,oz:28.3495,lb:453.592}},
+  volume:{base:"ml",units:{ml:1,L:1000,tsp:4.92892,tbsp:14.7868,cup:236.588,"fl oz":29.5735,qt:946.353,gal:3785.41}},
+  count:{base:"ea",units:{ea:1,dozen:12}}
+};
+function convert(qty, from, to, fam){
+  const u = FAM[fam].units;
+  if(u[from]==null||u[to]==null) return null;
+  return qty * u[from] / u[to];
+}
+function unitOptions(fam, sel){
+  return Object.keys(FAM[fam].units).map(u=>`<option value="${u}"${u===sel?" selected":""}>${u}</option>`).join("");
+}
+function unitOptionsAll(sel){
+  const g=(label,fam)=>`<optgroup label="${label}">`+Object.keys(FAM[fam].units).map(u=>`<option value="${u}"${u===sel?" selected":""}>${u}</option>`).join("")+`</optgroup>`;
+  return g("Weight","weight")+g("Volume","volume")+g("Count","count");
+}
+const famOf = u => FAM.weight.units[u]!=null ? "weight" : (FAM.volume.units[u]!=null ? "volume" : "count");
+const esc = s => String(s??"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+
+/* densities (g per mL) for common ingredients — matched by name, first hit wins */
+const DENSITY = [
+  ["powdered sugar",0.56],["confectioner",0.56],["brown sugar",0.81],["sugar",0.85],
+  ["bread flour",0.55],["cake flour",0.50],["flour",0.53],
+  ["butter",0.96],["shortening",0.88],["lard",0.9],
+  ["olive oil",0.92],["oil",0.92],
+  ["heavy cream",1.01],["cream",1.01],["buttermilk",1.03],["milk",1.03],["water",1.0],
+  ["honey",1.42],["molasses",1.4],["corn syrup",1.38],["maple syrup",1.32],["syrup",1.35],
+  ["rice",0.85],["salt",1.22],["cocoa",0.53],["cornstarch",0.64],["corn starch",0.64],["cornmeal",0.66],
+  ["oats",0.41],["oatmeal",0.41],["peanut butter",1.09],
+  ["mayonnaise",0.91],["mayo",0.91],["ketchup",1.14],["mustard",1.05],["vinegar",1.01],
+  ["broth",1.0],["stock",1.0],["tomato sauce",1.03],["tomato paste",1.11],["crushed tomato",1.02],
+  ["chocolate chips",0.72],["shredded cheese",0.45],["parmesan",0.42],["breadcrumbs",0.45],["panko",0.25]
+];
+function densityFor(ing){
+  if(ing.cupOz>0) return ing.cupOz*28.3495/236.588;   // member-supplied "1 cup weighs X oz"
+  const n=(ing.name||"").toLowerCase();
+  for(const [k,d] of DENSITY) if(n.includes(k)) return d;
+  return null;
+}
+
+/* ---------- business-type config ---------- */
+const TYPES = {
+  preorder:{label:"Prepared meals / preorders", unitWord:"unit", priceWord:"unit",
+    fcBand:[28,35], targetPct:30, primeCap:60, mode:"fc",
+    yieldHint:'A "unit" is one thing a customer buys — a cookie, a boxed meal, a tub.'},
+  catering:{label:"Catering / event", unitWord:"guest", priceWord:"guest",
+    fcBand:[25,35], targetPct:30, primeCap:65, mode:"margin", targetMargin:68, marginBand:[65,70],
+    yieldHint:'For catering, a "unit" is one guest served. "Batch makes" = number of guests.'},
+  truck:{label:"Food truck / mobile", unitWord:"item", priceWord:"item",
+    fcBand:[25,35], targetPct:30, primeCap:60, mode:"fc",
+    yieldHint:'A "unit" is one menu item a customer buys.'},
+  packaged:{label:"Packaged / shelf goods", unitWord:"unit", priceWord:"wholesale unit",
+    wholesaleMargin:40, marginBand:[35,50], prodCapPct:40, mode:"wholesale",
+    yieldHint:'A "unit" is one finished package — a jar, a bag, a box.'}
+};
+
+/* ---------- state ---------- */
+const S = {
+  type:null, productName:"", yieldQty:null, yieldUnit:"",
+  ingredients:[], packaging:[],
+  ownerHours:null, ownerRate:20,
+  helpers:[],
+  kitchenHours:null, kitchenRate:19.25, kitchenRateSel:"19.25", kitchenRateCustom:null,
+  extrasList:[], serviceFee:null,
+  price:null, targetPct:null
+};
+
+/* ---------- helpers ---------- */
+const $ = s=>document.querySelector(s);
+const money = n=>"$"+(isFinite(n)?n:0).toLocaleString("en-US",{minimumFractionDigits:2,maximumFractionDigits:2});
+const num = v=>{const n=parseFloat(v);return isFinite(n)?n:0;};
+const pct = n=>(isFinite(n)?n:0).toFixed(0)+"%";
+
+/* ---------- ingredient / packaging rows ---------- */
+function blankIng(){return{name:"",dish:"",price:null,pqty:null,punit:"lb",uqty:null,uunit:"oz",yield:100,cupOz:null};}
+function blankHelper(){return{role:"",hours:null,rate:null};}
+function blankExtra(){return{name:"",cost:null};}
+function blankPack(){return{name:"",casePrice:null,caseUnits:null,used:null};}
+
+function ingRow(ing, i){
+  const el = document.createElement("div");
+  el.className = "item";
+  el.innerHTML = `
+    <button class="del" title="Remove" data-del-ing="${i}">×</button>
+    ${S.type==="catering"?`<div class="field" style="margin-bottom:10px"><label>Dish / course (optional)</label>
+        <input data-f="dish" placeholder="Lasagna" value="${esc(ing.dish)}"></div>`:""}
+    <div class="grid ing-grid">
+      <div class="field" style="grid-column:span 2"><label>Ingredient</label>
+        <input data-f="name" placeholder="All-purpose flour" value="${esc(ing.name)}"></div>
+      <div class="field" style="grid-column:span 3"><label>What you paid (the whole purchase)</label>
+        <div class="sub3">
+          <div class="adorned"><span class="pre">$</span><input data-f="price" type="number" min="0" step="0.01" inputmode="decimal" placeholder="18.00" value="${ing.price??""}"></div>
+          <input data-f="pqty" type="number" min="0" step="any" inputmode="decimal" placeholder="25" value="${ing.pqty??""}">
+          <select data-f="punit">${unitOptionsAll(ing.punit)}</select>
+        </div></div>
+      <div class="field" style="grid-column:span 2"><label>Usable amount this recipe uses</label>
+        <div class="subunit">
+          <input data-f="uqty" type="number" min="0" step="any" inputmode="decimal" placeholder="16" value="${ing.uqty??""}">
+          <select data-f="uunit">${unitOptionsAll(ing.uunit)}</select>
+        </div></div>
+      <div class="field"><label>Trim / yield %</label>
+        <div class="adorned pct"><input data-f="yield" type="number" min="1" max="100" step="1" inputmode="decimal" value="${ing.yield??100}"><span class="post">%</span></div></div>
+      <div class="field" data-densfield style="grid-column:span 2;display:none"><label>1 cup of this weighs (oz)</label>
+        <input data-f="cupOz" type="number" min="0" step="0.1" inputmode="decimal" placeholder="4.2" value="${ing.cupOz??""}"></div>
+    </div>
+    <div class="needs" data-needs></div>
+    <div class="itemcost" data-cost></div>
+    <div class="carry" data-carry></div>`;
+  el.querySelectorAll("[data-f]").forEach(inp=>{
+    const f = inp.getAttribute("data-f");
+    inp.addEventListener("input", ()=>{
+      if(f==="name") ing.name=inp.value;
+      else if(f==="dish") ing.dish=inp.value;
+      else if(f==="punit") ing.punit=inp.value;
+      else if(f==="uunit") ing.uunit=inp.value;
+      else ing[f]= inp.value===""?null:num(inp.value);
+      refreshIngFeedback();
+      render();
+    });
+  });
+  el.querySelector("[data-del-ing]").addEventListener("click",()=>{S.ingredients.splice(i,1);renderIngredients();render();});
+  return el;
+}
+
+/* why an ingredient can't be costed yet: "density" | "count" | null */
+function ingIssue(ing){
+  if(!ing.price||!ing.pqty||!ing.uqty) return null;   // just incomplete, not an issue
+  const pf=famOf(ing.punit), uf=famOf(ing.uunit);
+  if(pf===uf) return null;
+  if(pf==="count"||uf==="count") return "count";
+  return densityFor(ing)==null ? "density" : null;
+}
+
+function ingCost(ing){
+  if(!ing.price||!ing.pqty||!ing.uqty) return null;
+  const pf=famOf(ing.punit), uf=famOf(ing.uunit);
+  let used=null;
+  if(pf===uf){
+    used = convert(ing.uqty, ing.uunit, ing.punit, pf);
+  } else if(pf!=="count" && uf!=="count"){
+    const d=densityFor(ing);
+    if(d==null) return null;
+    // normalize the used amount to grams via density, then into the purchase unit
+    const grams = uf==="volume" ? convert(ing.uqty, ing.uunit, "ml", "volume")*d
+                                : convert(ing.uqty, ing.uunit, "g", "weight");
+    used = pf==="weight" ? convert(grams, "g", ing.punit, "weight")
+                         : convert(grams/d, "ml", ing.punit, "volume");
+  } else return null;   // count can't cross into weight/volume
+  if(used==null) return null;
+  const perPUnit = ing.price/ing.pqty;
+  const y = (ing.yield&&ing.yield>0?ing.yield:100)/100;
+  return perPUnit*used/y;
+}
+
+/* live per-row feedback — updates costs/notes WITHOUT rebuilding rows (keeps focus) */
+function refreshIngFeedback(){
+  const list = $("#ingList");
+  S.ingredients.forEach((ing,i)=>{
+    const row = list.children[i]; if(!row) return;
+    const cEl = row.querySelector("[data-cost]");
+    const carry = row.querySelector("[data-carry]");
+    const needs = row.querySelector("[data-needs]");
+    const dens = row.querySelector("[data-densfield]");
+    const issue = ingIssue(ing);
+    if(dens) dens.style.display = issue==="density" ? "" : (ing.cupOz!=null ? "" : "none");
+    if(needs){
+      if(issue==="density"){
+        needs.classList.add("show");
+        needs.innerHTML = `You bought by ${famOf(ing.punit)} but measured by ${famOf(ing.uunit)} — that's fine! I just don't know this ingredient yet. Tell me what <b>1 cup weighs in oz</b> (check the nutrition label: serving size often shows both).`;
+      } else if(issue==="count"){
+        needs.classList.add("show");
+        needs.innerHTML = `Count (ea / dozen) can't convert to weight or volume. Use the same kind of unit on both sides — e.g. buy 30 <b>ea</b>, use 12 <b>ea</b>.`;
+      } else needs.classList.remove("show");
+    }
+    const c = ingCost(ing);
+    if(c!=null){
+      cEl.textContent = "This batch uses "+money(c)+" of "+(ing.name||"this ingredient");
+      const leftover = (ing.price||0) - c;
+      if(leftover>0.5 && ing.price){
+        carry.classList.add("show");
+        carry.innerHTML = `You paid <b>${money(ing.price)}</b> for the full amount — this batch only draws <b>${money(c)}</b>. The other <b>${money(leftover)}</b> stocks your next batches, so the case isn't "lost" money.`;
+      } else carry.classList.remove("show");
+    } else { cEl.textContent=""; carry.classList.remove("show"); }
+  });
+  const ds=$("#dishSummary");
+  if(ds){
+    const byDish={};
+    if(S.type==="catering") S.ingredients.forEach(ing=>{const c=ingCost(ing); if(c!=null){const d=(ing.dish||"").trim()||"Unassigned"; byDish[d]=(byDish[d]||0)+c;}});
+    const keys=Object.keys(byDish);
+    if(S.type==="catering" && keys.length){
+      ds.style.display="block";
+      ds.innerHTML=`<div class="st">Food cost by dish</div>`+keys.map(k=>`<div class="sl"><span class="nm">${esc(k)}</span><b>${money(byDish[k])}</b></div>`).join("");
+    } else { ds.style.display="none"; ds.innerHTML=""; }
+  }
+}
+
+function renderIngredients(){
+  const list = $("#ingList"); list.innerHTML="";
+  if(S.ingredients.length===0) S.ingredients.push(blankIng());
+  S.ingredients.forEach((ing,i)=>list.appendChild(ingRow(ing,i)));
+  refreshIngFeedback();
+}
+
+function packRow(p,i){
+  const el=document.createElement("div");
+  el.className="item";
+  el.innerHTML=`
+    <button class="del" title="Remove" data-del-pack="${i}">×</button>
+    <div class="grid ing-grid">
+      <div class="field" style="grid-column:span 2"><label>Packaging item</label>
+        <input data-f="name" placeholder="Kraft box + sticker" value="${esc(p.name)}"></div>
+      <div class="field" style="grid-column:span 3"><label>Price per case / sleeve</label>
+        <div class="subunit">
+          <div class="adorned"><span class="pre">$</span><input data-f="casePrice" type="number" min="0" step="0.01" inputmode="decimal" placeholder="22.00" value="${p.casePrice??""}"></div>
+          <input data-f="caseUnits" type="number" min="0" step="1" inputmode="decimal" placeholder="50 in case" value="${p.caseUnits??""}">
+        </div></div>
+      <div class="field" style="grid-column:span 2"><label>How many this batch uses</label>
+        <input data-f="used" type="number" min="0" step="1" inputmode="decimal" placeholder="24" value="${p.used??""}"></div>
+    </div>
+    <div class="itemcost" data-cost></div>
+    <div class="carry" data-carry></div>`;
+  el.querySelectorAll("[data-f]").forEach(inp=>{
+    const f=inp.getAttribute("data-f");
+    inp.addEventListener("input",()=>{ p[f]= f==="name"?inp.value:(inp.value===""?null:num(inp.value)); refreshPackFeedback(); render(); });
+  });
+  el.querySelector("[data-del-pack]").addEventListener("click",()=>{S.packaging.splice(i,1);renderPackaging();render();});
+  return el;
+}
+function packCost(p){
+  if(!p.casePrice||!p.caseUnits||!p.used) return null;
+  return (p.casePrice/p.caseUnits)*p.used;
+}
+function refreshPackFeedback(){
+  const list=$("#packList");
+  S.packaging.forEach((p,i)=>{
+    const row=list.children[i]; if(!row) return;
+    const c=packCost(p);
+    const cEl=row.querySelector("[data-cost]");
+    const carry=row.querySelector("[data-carry]");
+    if(c!=null){
+      cEl.textContent="This batch uses "+money(c)+" of "+(p.name||"this item");
+      const leftover=(p.casePrice||0)-c;
+      if(leftover>0.5 && p.casePrice){
+        carry.classList.add("show");
+        carry.innerHTML=`You paid <b>${money(p.casePrice)}</b> for the full case — this batch uses <b>${money(c)}</b>. The other <b>${money(leftover)}</b> packages your future batches.`;
+      } else carry.classList.remove("show");
+    } else { cEl.textContent=""; carry.classList.remove("show"); }
+  });
+}
+function renderPackaging(){
+  const list=$("#packList"); list.innerHTML="";
+  if(S.packaging.length===0) S.packaging.push(blankPack());
+  S.packaging.forEach((p,i)=>list.appendChild(packRow(p,i)));
+  refreshPackFeedback();
+}
+
+function helperRow(h,i){
+  const el=document.createElement("div"); el.className="item";
+  el.innerHTML=`
+    <button class="del" title="Remove" data-del-help="${i}">×</button>
+    <div class="grid help-grid">
+      <div class="field"><label>Role</label>
+        <input data-f="role" placeholder="Prep / server / driver" value="${esc(h.role)}"></div>
+      <div class="field"><label>Hours</label>
+        <input data-f="hours" type="number" min="0" step="0.25" inputmode="decimal" placeholder="4" value="${h.hours??""}"></div>
+      <div class="field"><label>$ / hr</label>
+        <div class="adorned"><span class="pre">$</span><input data-f="rate" type="number" min="0" step="0.25" inputmode="decimal" placeholder="15" value="${h.rate??""}"></div></div>
+    </div>`;
+  el.querySelectorAll("[data-f]").forEach(inp=>{const f=inp.getAttribute("data-f");
+    inp.addEventListener("input",()=>{ h[f]= f==="role"?inp.value:(inp.value===""?null:num(inp.value)); render(); });});
+  el.querySelector("[data-del-help]").addEventListener("click",()=>{S.helpers.splice(i,1);renderHelpers();render();});
+  return el;
+}
+function renderHelpers(){
+  const list=$("#helpList"); if(!list)return; list.innerHTML="";
+  S.helpers.forEach((h,i)=>list.appendChild(helperRow(h,i)));
+}
+function extraRow(x,i){
+  const el=document.createElement("div"); el.className="item";
+  el.innerHTML=`
+    <button class="del" title="Remove" data-del-extra="${i}">×</button>
+    <div class="grid pack-grid">
+      <div class="field"><label>Item</label>
+        <input data-f="name" placeholder="Linens / chafers / flowers" value="${esc(x.name)}"></div>
+      <div class="field"><label>Cost</label>
+        <div class="adorned"><span class="pre">$</span><input data-f="cost" type="number" min="0" step="0.01" inputmode="decimal" placeholder="0.00" value="${x.cost??""}"></div></div>
+    </div>`;
+  el.querySelectorAll("[data-f]").forEach(inp=>{const f=inp.getAttribute("data-f");
+    inp.addEventListener("input",()=>{ x[f]= f==="name"?inp.value:(inp.value===""?null:num(inp.value)); render(); });});
+  el.querySelector("[data-del-extra]").addEventListener("click",()=>{S.extrasList.splice(i,1);renderExtras();render();});
+  return el;
+}
+function renderExtras(){
+  const list=$("#extraList"); if(!list)return; list.innerHTML="";
+  S.extrasList.forEach((x,i)=>list.appendChild(extraRow(x,i)));
+}
+
+/* ---------- core calc ---------- */
+function calc(){
+  const units = S.yieldQty>0?S.yieldQty:0;
+  const ingBatch = S.ingredients.reduce((s,i)=>s+(ingCost(i)||0),0);
+  const packBatch = S.packaging.reduce((s,p)=>s+(packCost(p)||0),0);
+  const packPer = units>0? packBatch/units : 0;
+  const ownerLabor = (S.ownerHours||0)*(S.ownerRate||0);
+  const helperLabor = S.helpers.reduce((s,h)=>s+((h.hours||0)*(h.rate||0)),0);
+  const laborBatch = ownerLabor + helperLabor;
+  const kitchenBatch = (S.kitchenHours||0)*(S.kitchenRate||0);
+  const extras = S.type==="catering"? S.extrasList.reduce((s,x)=>s+(x.cost||0),0) : 0;
+  const serviceFee = S.type==="catering"? (S.serviceFee||0) : 0;
+  const totalBatch = ingBatch+packBatch+laborBatch+kitchenBatch+extras;
+  const perUnit = units>0? totalBatch/units : 0;
+  const ingPer = units>0? ingBatch/units : 0;
+  const primePer = units>0? (ingBatch+laborBatch)/units : 0;
+  return {units,ingBatch,packBatch,laborBatch,ownerLabor,helperLabor,kitchenBatch,extras,serviceFee,totalBatch,perUnit,ingPer,primePer,packPer};
+}
+
+/* ---------- render results ---------- */
+function render(){
+  const t = S.type? TYPES[S.type]:null;
+  const ready = t && S.ingredients.some(i=>ingCost(i)!=null);
+  $("#emptyState").style.display = ready?"none":"block";
+  $("#liveCard").style.display = ready?"block":"none";
+  const mb=$("#miniBar");
+  mb.classList.toggle("show", !!ready);
+  document.body.classList.toggle("pad-minibar", !!ready);
+  if(!ready) return;
+
+  const c = calc();
+  const price = S.price||0;
+
+  // mobile mini-bar
+  $("#mbCost").textContent = money(c.perUnit);
+  $("#mbProfitK").textContent = `Profit / ${t.priceWord}`;
+  const mbProfit=$("#mbProfit");
+  if(price>0){ const pp=price-c.perUnit; mbProfit.textContent=money(pp); mbProfit.classList.toggle("neg",pp<0); }
+  else { mbProfit.textContent="set a price"; mbProfit.classList.remove("neg"); }
+
+  $("#cardType").textContent = t.label;
+  $("#cardName").textContent = S.productName||"Untitled product";
+  $("#cardYield").textContent = c.units>0? `Batch of ${c.units} ${S.yieldUnit||t.unitWord+"s"} · ${money(c.totalBatch)} total cost` : "Set how many the batch makes";
+
+  $("#mCost").textContent = money(c.perUnit);
+  const profitPer = price - c.perUnit;
+  $("#mProfit").textContent = money(profitPer);
+  const pm = $("#mProfit").closest(".metric");
+  pm.classList.toggle("neg", profitPer<0);
+  $("#mProfitK").textContent = price>0? `Profit / ${t.priceWord} (${price>0?pct((profitPer/price)*100):"0%"} margin)` : `Profit / ${t.priceWord}`;
+
+  /* waterfall (per batch, at set price) */
+  const revenue = price*c.units;
+  $("#waterSub").textContent = price>0
+    ? `Batch revenue ${money(revenue)} at ${money(price)}/${t.priceWord}, split into costs and profit.`
+    : `Set a price below to see profit. Costs shown per batch.`;
+  const profitBatch = revenue - c.totalBatch;
+  const denom = Math.max(revenue, c.totalBatch);
+  const segs = [
+    {k:"Ingredients", v:c.ingBatch, cls:"seg-ing"},
+    {k:"Packaging", v:c.packBatch, cls:"seg-pack"},
+    {k:"Kitchen time", v:c.kitchenBatch, cls:"seg-kit"},
+    {k:"Your + helpers' time", v:c.laborBatch, cls:"seg-lab", hi:true},
+  ];
+  if(c.extras>0) segs.push({k:"Event extras", v:c.extras, cls:"seg-extra"});
+  const bar = $("#bar"); bar.innerHTML=""; bar.classList.toggle("loss", profitBatch<0);
+  segs.forEach(s=>{ if(s.v>0){const sp=document.createElement("span");sp.className=s.cls;sp.style.width=(denom>0?(s.v/denom*100):0)+"%";bar.appendChild(sp);} });
+  if(profitBatch>0){const sp=document.createElement("span");sp.className="seg-profit";sp.style.width=(denom>0?(profitBatch/denom*100):0)+"%";bar.appendChild(sp);}
+
+  const legend = $("#legend"); legend.innerHTML="";
+  const legItems = segs.concat(profitBatch>=0?[{k:"Profit",v:profitBatch,cls:"seg-profit",hi:true}]:[{k:"Shortfall",v:profitBatch,cls:"seg-profit",hi:true}]);
+  legItems.forEach(s=>{ if(s.v!==0||s.k==="Profit"||s.k==="Shortfall"){
+    const d=document.createElement("div"); if(s.hi)d.className="hi";
+    d.innerHTML=`<i style="background:var(--${s.cls.replace('seg-','')==='ing'?'clay':''})" class="${s.cls}"></i>${s.k}<span class="amt">${money(s.v)}</span>`;
+    legend.appendChild(d);
+  }});
+
+  /* ledger */
+  const led = $("#ledger");
+  const rows = [
+    ["Revenue (batch)", revenue],
+    ["− Ingredients", -c.ingBatch],
+    ["− Packaging", -c.packBatch],
+    ["− Kitchen time", -c.kitchenBatch],
+    ["− Your time", -c.ownerLabor],
+  ];
+  if(c.helperLabor>0) rows.push(["− Helpers", -c.helperLabor]);
+  if(c.extras>0) rows.push(["− Event extras", -c.extras]);
+  led.innerHTML = rows.map(r=>`<div class="lr"><span class="lbl">${r[0]}</span><span>${r[1]<0?"−":""}${money(Math.abs(r[1]))}</span></div>`).join("")
+    + `<div class="lr tot"><span class="lbl">${profitBatch<0?"Shortfall":"Profit (batch)"}</span><span>${money(profitBatch)}</span></div>`;
+
+  // catering client-quote summary — service fee is revenue billed on top, not a cost
+  const q=$("#quote");
+  if(q){
+    if(S.type==="catering" && price>0){
+      const sub=price*c.units, fee=c.serviceFee, total=sub+fee;
+      q.style.display="block";
+      q.innerHTML=`<div class="st">What the client pays</div>`
+        +`<div class="sl"><span class="nm">${money(price)}/guest × ${c.units}</span><b>${money(sub)}</b></div>`
+        +(fee>0?`<div class="sl"><span class="nm">+ Delivery / service fee</span><b>${money(fee)}</b></div>`:"")
+        +`<div class="sl" style="border-top:1px dashed var(--line);margin-top:6px;padding-top:7px"><span class="nm"><b>Total quote</b></span><b>${money(total)}</b></div>`
+        +`<div class="ladder">The fee is billed on top to cover delivery/service — it isn't part of the per-guest margin above.</div>`;
+    } else { q.style.display="none"; q.innerHTML=""; }
+  }
+
+  /* pricing suggestions */
+  renderPricing(t,c);
+  /* checks */
+  renderChecks(t,c,price);
+}
+
+function renderPricing(t,c){
+  const sug = $("#suggest");
+  let rec=0, heroLabel="", explain="", alts="";
+  if(t.mode==="fc"){
+    $("#targetLabel").textContent="Target food cost %";
+    if(S.targetPct==null){S.targetPct=t.targetPct; $("#targetPct").value=t.targetPct;}
+    const tp = S.targetPct||t.targetPct;
+    rec = tp>0? c.ingPer/(tp/100):0;
+    heroLabel=`Price to hit ${tp}% food cost`;
+    explain=`Food cost % counts ingredients only — it doesn't cover your labor or kitchen time. Treat this as a floor; the markup below usually prices safer.`;
+    alts=`<div class="sl"><span class="nm">All-in cost × 2.5 markup (covers labor)</span><b>${money(c.perUnit*2.5)}</b></div>`
+        +`<div class="sl"><span class="nm">~55% gross margin, all-in</span><b>${money(c.perUnit/0.45)}</b></div>`;
+  } else if(t.mode==="margin"){
+    $("#targetLabel").textContent="Target gross margin %";
+    if(S.targetPct==null){S.targetPct=t.targetMargin; $("#targetPct").value=t.targetMargin;}
+    const tm = S.targetPct||t.targetMargin;
+    if(tm>=100){
+      rec=0; heroLabel=`Pick a target under 100%`;
+      explain=`A margin of 100% or more isn't possible — the price would be infinite. Caterers usually target 65–70%.`;
+      alts="";
+    } else {
+      rec = c.perUnit/(1-tm/100);
+      heroLabel=`Charge this per guest`;
+      explain=`This covers every cost and leaves ${tm}% as your margin — the 65–70% range caterers aim for. Set the target above and this price follows. Add a little for surprise guests.`;
+      alts=`<div class="sl"><span class="nm">+ 8% buffer for overruns</span><b>${money(rec*1.08)}</b></div>`
+          +`<div class="sl"><span class="nm">Old "3× food cost" rule of thumb</span><b>${money(c.ingPer*3)}</b></div>`;
+    }
+  } else {
+    $("#targetLabel").textContent="Target wholesale margin %";
+    if(S.targetPct==null){S.targetPct=t.wholesaleMargin; $("#targetPct").value=t.wholesaleMargin;}
+    const wm = S.targetPct||t.wholesaleMargin;
+    if(wm>=100){
+      rec=0; heroLabel=`Pick a target under 100%`;
+      explain=`A margin of 100% or more isn't possible — the price would be infinite. Packaged makers usually target 35–50% at wholesale.`;
+      alts="";
+    } else {
+      rec = c.perUnit/(1-wm/100);
+      const keystone=rec*2;
+      heroLabel=`Your wholesale price (${wm}% margin)`;
+      explain=`A store roughly doubles this to about ${money(keystone)} on the shelf. Keep your cost (${money(c.perUnit)}) under ~40% of that shelf price. Selling direct at a market? Charge the shelf price yourself.`;
+      alts=`<div class="sl"><span class="nm">Keystone shelf price (2× wholesale)</span><b>${money(keystone)}</b></div>`;
+    }
+  }
+  sug.innerHTML=`
+    <div class="hero">
+      <div><div class="st" style="margin:0 0 2px">${heroLabel}</div><div class="herop mono">${money(rec)}</div></div>
+      <button class="usebtn" data-useprice="${rec.toFixed(2)}">Use this price →</button>
+    </div>
+    <div class="ladder" style="border-top:none;padding-top:2px">${explain}</div>
+    ${alts?`<div style="border-top:1px dashed var(--line);margin-top:10px;padding-top:9px"><div class="st">Other ways to price</div>${alts}</div>`:""}`;
+}
+
+function renderChecks(t,c,price){
+  const box=$("#checks"); const out=[];
+  const add=(cls,txt)=>out.push(`<div class="chk ${cls}"><span class="dot">${cls==="good"?"✓":cls==="warn"?"!":"×"}</span><span>${txt}</span></div>`);
+
+  // owner labor at zero
+  if((S.ownerHours||0)>0 && (S.ownerRate||0)===0){
+    add("warn",`<b>You're working for free.</b> Your hours are in the recipe but at $0. Set a pay rate — even $20/hr — so your price reflects the real work.`);
+  } else if((S.ownerHours||0)===0 && (c.kitchenBatch>0 || c.ingBatch>0)){
+    add("warn",`<b>No hours entered for your time.</b> Add your batch hours in Step 5 so your labor is priced in, not given away.`);
+  }
+
+  if(price>0){
+    if(price < c.perUnit){
+      add("bad",`<b>Priced below cost.</b> You lose ${money(c.perUnit-price)} on every ${t.priceWord} at ${money(price)}. Raise the price or cut cost.`);
+    } else {
+      add("good",`Price covers cost with ${money(price-c.perUnit)} profit per ${t.priceWord}.`);
+    }
+  }
+
+  if(t.mode==="fc" && price>0){
+    const fc = c.ingPer/price*100;
+    if(fc>=t.fcBand[0] && fc<=t.fcBand[1]) add("good",`Food cost <b>${fc.toFixed(0)}%</b> sits in the healthy ${t.fcBand[0]}–${t.fcBand[1]}% range.`);
+    else if(fc<t.fcBand[0]) add("warn",`Food cost <b>${fc.toFixed(0)}%</b> is below ${t.fcBand[0]}% — fine if intentional, but check you're not overpriced for your market.`);
+    else add("warn",`Food cost <b>${fc.toFixed(0)}%</b> is above ${t.fcBand[1]}% — ingredients eat too much of the price. Raise price, cut waste, or trim portions.`);
+    const prime = c.primePer/price*100;
+    if(prime>t.primeCap) add("warn",`Prime cost (food + labor) is <b>${prime.toFixed(0)}%</b> of price — above the ${t.primeCap}% line. Watch labor hours and pricing together.`);
+  }
+  if(t.mode==="margin" && price>0){
+    const gm=(price-c.perUnit)/price*100;
+    if(gm>=t.marginBand[0]&&gm<=t.marginBand[1]) add("good",`Gross margin <b>${gm.toFixed(0)}%</b> is right in the ${t.marginBand[0]}–${t.marginBand[1]}% catering range.`);
+    else if(gm<t.marginBand[0]) add("warn",`Gross margin <b>${gm.toFixed(0)}%</b> is under ${t.marginBand[0]}% — thin for catering once a surprise cost hits. Nudge the per-guest price up.`);
+    else add("good",`Gross margin <b>${gm.toFixed(0)}%</b> — healthy, with room for a buffer.`);
+  }
+  if(t.mode==="wholesale" && price>0){
+    const keystone=price*2;
+    const prodPct=c.perUnit/keystone*100;
+    if(prodPct<=t.prodCapPct) add("good",`At a ${money(keystone)} shelf price, your cost is <b>${prodPct.toFixed(0)}%</b> of retail — under the 40% target, so there's room for a store's markup.`);
+    else add("warn",`Your cost is <b>${prodPct.toFixed(0)}%</b> of a keystone shelf price — over 40%. A store may not have room to mark it up. Cut cost or aim for premium positioning.`);
+  }
+
+  // bulk reminder if any big leftover
+  const bulk = S.ingredients.find(i=>{const cc=ingCost(i);return cc!=null && i.price && (i.price-cc)>5;});
+  if(bulk) add("good",`Buying in bulk (like ${bulk.name||"your case items"}) costs more up front but stocks future batches — only this batch's share is in your cost above.`);
+
+  box.innerHTML = out.join("") || `<div class="chk good"><span class="dot">✓</span><span>Add a price to see how it lands against industry targets.</span></div>`;
+}
+
+/* ---------- type selection ---------- */
+function setType(tp){
+  S.type=tp;
+  document.querySelectorAll("#types .type").forEach(b=>b.setAttribute("aria-pressed", b.dataset.type===tp));
+  const t=TYPES[tp];
+  $("#typeNote").innerHTML = `<b>${t.label}.</b> ${t.mode==="fc"?"We'll target a food-cost % and watch your prime cost.":t.mode==="margin"?"We'll price per guest toward a healthy gross margin, with rentals and transport counted.":"We'll price on margin and keystone — the right math for a shelf product, not food-cost %."}`;
+  $("#yieldQtyLabel").textContent = tp==="catering"?"Serves (guests)":"Batch makes";
+  $("#yieldQty").placeholder = tp==="catering"?"75":"24";
+  $("#yieldNote").textContent = t.yieldHint;
+  $("#cateringPanel").classList.toggle("on", tp==="catering");
+  $("#truckNote").classList.toggle("on", tp==="truck");
+  const cat = tp==="catering";
+  $("#step2Title").textContent = cat?"The event & how many guests":"The recipe & what it yields";
+  $("#step2Hint").textContent = cat?"Everything you're serving, for this many guests.":"One full batch as you actually make it.";
+  $("#productLabel").textContent = cat?"Event / menu name":"Product name";
+  $("#unitNameField").style.display = cat?"none":"";
+  $("#ingTitle").textContent = cat?"Food — across all your dishes":"Ingredients";
+  $("#ingHint").innerHTML = cat?"List ingredients for every dish; tag each with its dish.":"Enter each one as you <b>bought</b> it. Bulk cases are handled for you.";
+  $("#cateringIngNote").style.display = cat?"block":"none";
+  renderIngredients(); renderHelpers(); renderExtras();
+  // set the pricing target + labels for this mode right away
+  if(t.mode==="fc"){ $("#targetLabel").textContent="Target food cost %"; $("#priceLabel").textContent="Your price / unit"; S.targetPct=t.targetPct; }
+  else if(t.mode==="margin"){ $("#targetLabel").textContent="Target gross margin %"; $("#priceLabel").textContent="Your price / guest"; S.targetPct=t.targetMargin; }
+  else { $("#targetLabel").textContent="Target wholesale margin %"; $("#priceLabel").textContent="Your wholesale price / unit"; S.targetPct=t.wholesaleMargin; }
+  $("#targetPct").value=S.targetPct;
+  renumberSteps();
+  render();
+}
+
+/* ---------- auto-number visible steps ---------- */
+function renumberSteps(){
+  let n=0;
+  document.querySelectorAll(".col-input > .panel").forEach(p=>{
+    const cond=p.classList.contains("cond");
+    const visible=!cond||p.classList.contains("on");
+    const s=p.querySelector(".step");
+    if(visible&&s) s.textContent=String(++n);
+  });
+}
+
+/* ---------- wire static inputs ---------- */
+function bind(id, key, asNum){
+  $("#"+id).addEventListener("input", e=>{ S[key]= e.target.value===""?(asNum?null:""):(asNum?num(e.target.value):e.target.value); render(); });
+}
+bind("productName","productName",false);
+bind("yieldQty","yieldQty",true);
+bind("yieldUnit","yieldUnit",false);
+bind("ownerHours","ownerHours",true);
+bind("ownerRate","ownerRate",true);
+bind("kitchenHours","kitchenHours",true);
+bind("serviceFee","serviceFee",true);
+bind("price","price",true);
+$("#targetPct").addEventListener("input",e=>{S.targetPct= e.target.value===""?null:num(e.target.value); render();});
+
+$("#kitchenRateSel").addEventListener("change",e=>{
+  S.kitchenRateSel=e.target.value;
+  const custom = e.target.value==="custom";
+  $("#customRateField").classList.toggle("on", custom);
+  S.kitchenRate = custom? (S.kitchenRateCustom||0) : num(e.target.value);
+  render();
+});
+$("#kitchenRateCustom").addEventListener("input",e=>{S.kitchenRateCustom=num(e.target.value); S.kitchenRate=S.kitchenRateCustom; render();});
+
+document.querySelectorAll("#types .type").forEach(b=>b.addEventListener("click",()=>setType(b.dataset.type)));
+$("#addIng").addEventListener("click",()=>{S.ingredients.push(blankIng());renderIngredients();render();});
+$("#addPack").addEventListener("click",()=>{S.packaging.push(blankPack());renderPackaging();render();});
+$("#addHelp").addEventListener("click",()=>{S.helpers.push(blankHelper());renderHelpers();render();});
+$("#addExtra").addEventListener("click",()=>{S.extrasList.push(blankExtra());renderExtras();render();});
+$("#suggest").addEventListener("click",e=>{
+  const b=e.target.closest("[data-useprice]"); if(!b)return;
+  S.price=num(b.getAttribute("data-useprice")); $("#price").value=S.price; render();
+});
+
+$("#miniBar").addEventListener("click",()=>$("#card").scrollIntoView({behavior:"smooth"}));
+
+/* ---------- save / load ---------- */
+$("#btnSave").addEventListener("click",()=>{
+  const data=JSON.stringify({...S, fileVersion:2},null,2);
+  const blob=new Blob([data],{type:"application/json"});
+  const a=document.createElement("a");
+  const name=(S.productName||"recipe").replace(/[^a-z0-9]+/gi,"_").toLowerCase();
+  a.href=URL.createObjectURL(blob); a.download=`AFW_costcard_${name}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+});
+$("#btnLoad").addEventListener("click",()=>$("#fileInput").click());
+$("#fileInput").addEventListener("change",e=>{
+  const f=e.target.files[0]; if(!f)return;
+  const r=new FileReader();
+  r.onload=()=>{ try{
+    const loaded=JSON.parse(r.result);
+    if(typeof loaded!=="object"||loaded===null||Array.isArray(loaded)) throw new Error("shape");
+    ["ingredients","packaging","helpers","extrasList"].forEach(k=>{ if(!Array.isArray(loaded[k])) loaded[k]=[]; });
+    Object.assign(S, loaded);
+    if(S.type && !TYPES[S.type]) S.type=null;
+    if(S.type) setType(S.type);
+    if(loaded.targetPct!=null) S.targetPct=loaded.targetPct;
+    $("#productName").value=S.productName||"";
+    $("#yieldQty").value=S.yieldQty??"";
+    $("#yieldUnit").value=S.yieldUnit||"";
+    $("#ownerHours").value=S.ownerHours??"";
+    $("#ownerRate").value=S.ownerRate??20;
+    $("#kitchenHours").value=S.kitchenHours??"";
+    $("#kitchenRateSel").value=S.kitchenRateSel||"19.25";
+    if(S.kitchenRateSel==="custom"){$("#customRateField").classList.add("on");$("#kitchenRateCustom").value=S.kitchenRateCustom??"";}
+    $("#serviceFee").value=S.serviceFee??"";
+    $("#price").value=S.price??"";
+    $("#targetPct").value=S.targetPct??"";
+    renderIngredients(); renderPackaging(); renderHelpers(); renderExtras(); render();
+  }catch(err){ alert("That file couldn't be read as a saved recipe. Make sure it's an AFW_costcard file saved from this tool, and that it hasn't been edited."); } };
+  r.readAsText(f);
+  e.target.value="";
+});
+
+/* ---------- print ---------- */
+$("#btnPrint").addEventListener("click",()=>{
+  const t=TYPES[S.type]; const c=calc(); const price=S.price||0;
+  const profitPer=price-c.perUnit; const revenue=price*c.units; const profitBatch=revenue-c.totalBatch;
+  const ingRows=S.ingredients.filter(i=>ingCost(i)!=null).map(i=>`<tr><td>${esc(i.name)||"(ingredient)"}</td><td style="text-align:right">${money(ingCost(i))}</td></tr>`).join("");
+  $("#printArea").innerHTML=`
+    <div style="font-family:'Hanken Grotesk',sans-serif;color:#221c14;max-width:680px;margin:0 auto">
+      <div style="border-bottom:3px solid #BE6A40;padding-bottom:8px;margin-bottom:14px">
+        <div style="font-size:11px;letter-spacing:.16em;text-transform:uppercase;color:#6F6150;font-weight:600">Akron Food Works · Cost Card</div>
+        <div style="font-family:'Fraunces',serif;font-size:26px;font-weight:600">${esc(S.productName)||"Untitled product"}</div>
+        <div style="font-size:13px;color:#6F6150">${t?t.label:""} · batch of ${c.units} ${esc(S.yieldUnit)||"units"}</div>
+      </div>
+      <table style="width:100%;border-collapse:collapse;font-size:13px;margin-bottom:14px">
+        <tr><td colspan="2" style="font-weight:700;padding-top:6px">Ingredients (this batch)</td></tr>
+        ${ingRows}
+        <tr><td>Packaging &amp; disposables</td><td style="text-align:right">${money(c.packBatch)}</td></tr>
+        <tr><td>Your time (${S.ownerHours||0} hr × ${money(S.ownerRate||0)})</td><td style="text-align:right">${money(c.ownerLabor)}</td></tr>
+        ${c.helperLabor>0?`<tr><td>Helpers</td><td style="text-align:right">${money(c.helperLabor)}</td></tr>`:""}
+        <tr><td>Kitchen time (${S.kitchenHours||0} hr × ${money(S.kitchenRate||0)})</td><td style="text-align:right">${money(c.kitchenBatch)}</td></tr>
+        ${c.extras>0?`<tr><td>Event extras</td><td style="text-align:right">${money(c.extras)}</td></tr>`:""}
+        <tr style="border-top:1.5px solid #221c14;font-weight:700"><td>Total batch cost</td><td style="text-align:right">${money(c.totalBatch)}</td></tr>
+      </table>
+      <table style="width:100%;border-collapse:collapse;font-size:15px;font-family:'Fraunces',serif">
+        <tr><td>True cost per ${t?t.priceWord:"unit"}</td><td style="text-align:right;font-weight:600">${money(c.perUnit)}</td></tr>
+        ${price>0?`<tr><td>Your price</td><td style="text-align:right;font-weight:600">${money(price)}</td></tr>
+        <tr><td>Profit per ${t?t.priceWord:"unit"} (${pct(profitPer/price*100)} margin)</td><td style="text-align:right;font-weight:600;color:${profitPer<0?'#A93B2C':'#38563F'}">${money(profitPer)}</td></tr>
+        <tr><td>Profit per batch</td><td style="text-align:right;font-weight:600;color:${profitBatch<0?'#A93B2C':'#38563F'}">${money(profitBatch)}</td></tr>`:""}
+      </table>
+      ${(S.type==="catering"&&price>0)?`<table style="width:100%;border-collapse:collapse;font-size:13px;margin-top:14px">
+        <tr><td colspan="2" style="font-weight:700">Client quote</td></tr>
+        <tr><td>${money(price)}/guest × ${c.units}</td><td style="text-align:right">${money(price*c.units)}</td></tr>
+        ${c.serviceFee>0?`<tr><td>+ Delivery / service fee</td><td style="text-align:right">${money(c.serviceFee)}</td></tr>`:""}
+        <tr style="border-top:1.5px solid #221c14;font-weight:700"><td>Total quote</td><td style="text-align:right">${money(price*c.units+c.serviceFee)}</td></tr>
+      </table>`:""}
+      <div style="font-size:11px;color:#6F6150;margin-top:18px;border-top:1px solid #DBD0B9;padding-top:8px">
+        Planning estimate from member inputs · Akron Food Works · Create · Incubate · Elevate</div>
+    </div>`;
+  window.print();
+});
+
+/* ---------- init ---------- */
+renderIngredients();
+renderPackaging();
+renderHelpers();
+renderExtras();
+renumberSteps();
+render();
+</script>
+</body>
+</html>
