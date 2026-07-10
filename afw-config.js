@@ -4,6 +4,6 @@
    Security (see supabase-setup.sql) is what protects member data. */
 
 window.AFW_CONFIG = {
-  supabaseUrl: 'https://YOUR-PROJECT-REF.supabase.co',
-  supabaseAnonKey: 'YOUR-ANON-PUBLIC-KEY',
+  supabaseUrl: 'https://pyavgjemukfiiruawdgg.supabase.co',
+  supabaseAnonKey: 'sb_publishable_wJEeHViBVIsoRG9gRikpsw_SOlPWPsj',
 };
