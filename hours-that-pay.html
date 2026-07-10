@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Will It Pay? — Akron Food Works Kitchen Calculator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,600;0,9..144,900;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cream:#FBF6EC;
+    --paper:#FFFDF8;
+    --ink:#23372B;
+    --ink-soft:#4A5A4E;
+    --green:#2C5440;
+    --green-deep:#1E3A2D;
+    --amber:#C8612E;
+    --amber-soft:#E89B5A;
+    --gold:#D9A441;
+    --line:#E2D9C6;
+    --bad:#B23B2E;
+    --shadow:0 18px 40px -22px rgba(30,58,45,.45);
+    --display:'Fraunces',Georgia,serif;
+    --body:'Hanken Grotesk',system-ui,sans-serif;
+    /* AFW Cloud account-bar palette bridge */
+    --afw-cream: var(--cream);
+    --afw-forest: var(--green-deep);
+    --afw-amber: var(--amber);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--body);
+    color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 85% -8%, rgba(217,164,65,.16), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(44,84,64,.12), transparent 55%),
+      var(--cream);
+    min-height:100vh;
+    line-height:1.5;
+    padding:clamp(16px,4vw,48px) clamp(14px,4vw,24px) 64px;
+  }
+  .wrap{max-width:760px;margin:0 auto}
+
+  /* header */
+  .eyebrow{
+    font-size:.72rem;letter-spacing:.32em;text-transform:uppercase;
+    font-weight:600;color:var(--amber);margin-bottom:14px;
+    display:flex;align-items:center;gap:10px;
+  }
+  .eyebrow::before{content:"";width:26px;height:2px;background:var(--amber);display:inline-block}
+  h1{
+    font-family:var(--display);font-weight:900;
+    font-size:clamp(2.3rem,7vw,3.6rem);line-height:.98;
+    letter-spacing:-.02em;color:var(--green-deep);
+  }
+  h1 em{font-style:italic;font-weight:500;color:var(--amber)}
+  .lede{
+    margin-top:16px;max-width:52ch;color:var(--ink-soft);
+    font-size:clamp(1rem,2.4vw,1.12rem);
+  }
+  .lede b{color:var(--green);font-weight:700}
+
+  /* cards */
+  .card{
+    background:var(--paper);border:1px solid var(--line);
+    border-radius:18px;padding:clamp(20px,4vw,30px);
+    box-shadow:var(--shadow);margin-top:28px;
+  }
+  .card h2{
+    font-family:var(--display);font-weight:600;font-size:1.05rem;
+    text-transform:uppercase;letter-spacing:.06em;color:var(--green);
+    margin-bottom:4px;
+  }
+  .card .sub{color:var(--ink-soft);font-size:.86rem;margin-bottom:20px}
+
+  /* fields */
+  .grid{display:grid;grid-template-columns:1fr;gap:18px}
+  @media(min-width:560px){.grid{grid-template-columns:1fr 1fr}.full{grid-column:1/-1}}
+  label{display:block}
+  .lbl{font-weight:600;font-size:.95rem;color:var(--ink);display:block;margin-bottom:6px}
+  .hint{font-size:.78rem;color:var(--ink-soft);margin-top:6px;line-height:1.35}
+  input[type=number],input[type=text],select{
+    width:100%;font-family:var(--body);font-size:1.05rem;font-weight:500;
+    color:var(--ink);background:var(--cream);
+    border:1.5px solid var(--line);border-radius:11px;
+    padding:13px 14px;transition:border-color .15s,box-shadow .15s;
+  }
+  input:focus,select:focus{
+    outline:none;border-color:var(--green);
+    box-shadow:0 0 0 3px rgba(44,84,64,.14);
+  }
+  .money{position:relative}
+  .money input{padding-left:30px}
+  .money::before{content:"$";position:absolute;left:13px;top:50%;transform:translateY(-50%);
+    color:var(--ink-soft);font-weight:600;pointer-events:none}
+
+  .checks{display:flex;flex-wrap:wrap;gap:12px;margin-top:4px}
+  .chk{
+    display:flex;align-items:center;gap:9px;cursor:pointer;
+    background:var(--cream);border:1.5px solid var(--line);border-radius:11px;
+    padding:11px 14px;font-weight:600;font-size:.92rem;flex:1 1 200px;
+    transition:border-color .15s,background .15s;
+  }
+  .chk:hover{border-color:var(--amber-soft)}
+  .chk input{width:18px;height:18px;accent-color:var(--green);cursor:pointer}
+
+  /* results */
+  .results{
+    background:
+      radial-gradient(700px 300px at 80% -20%, rgba(217,164,65,.22), transparent 60%),
+      var(--green-deep);
+    color:#F4EEDF;border:none;
+  }
+  .results h2{color:var(--gold)}
+  .headline{
+    display:grid;grid-template-columns:1fr;gap:18px;margin-bottom:8px;
+  }
+  @media(min-width:560px){.headline{grid-template-columns:1fr 1fr}}
+  .big{
+    background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.12);
+    border-radius:14px;padding:20px;
+  }
+  .big .k{font-size:.74rem;letter-spacing:.14em;text-transform:uppercase;color:var(--amber-soft);font-weight:600}
+  .big .v{font-family:var(--display);font-weight:900;font-size:clamp(2.4rem,9vw,3.4rem);line-height:1;margin:8px 0 4px;color:#fff}
+  .big .v small{font-size:1rem;font-weight:600;color:#F4EEDF;font-family:var(--body)}
+  .big .note{font-size:.85rem;color:#D6D2C4}
+  .big.warn{background:rgba(178,59,46,.22);border-color:rgba(232,155,90,.5)}
+  .big.warn .v{color:#FFD9CF;font-size:1.5rem;line-height:1.2}
+
+  .strip{
+    display:grid;grid-template-columns:repeat(2,1fr);gap:1px;
+    background:rgba(255,255,255,.12);border-radius:12px;overflow:hidden;margin-top:18px;
+  }
+  @media(min-width:560px){.strip{grid-template-columns:repeat(4,1fr)}}
+  .cell{background:var(--green-deep);padding:16px 14px}
+  .cell .k{font-size:.7rem;letter-spacing:.1em;text-transform:uppercase;color:var(--amber-soft);font-weight:600;margin-bottom:6px}
+  .cell .v{font-family:var(--display);font-weight:600;font-size:1.5rem;color:#fff}
+  .cell .v small{font-size:.8rem;color:#D6D2C4;font-family:var(--body);font-weight:500}
+
+  .notes{margin-top:18px;font-size:.84rem;color:#CFC9BA;line-height:1.5}
+  .notes p{margin-top:8px;padding-left:18px;position:relative}
+  .notes p::before{content:"›";position:absolute;left:0;color:var(--gold);font-weight:700}
+
+  footer{margin-top:34px;text-align:center;color:var(--ink-soft);font-size:.8rem;line-height:1.6}
+  footer .mark{font-family:var(--display);font-weight:900;letter-spacing:.04em;color:var(--green-deep);font-size:1rem}
+  footer .tag{letter-spacing:.28em;text-transform:uppercase;font-size:.66rem;color:var(--amber);font-weight:600;margin-top:2px}
+  .disc{margin-top:14px;max-width:60ch;margin-left:auto;margin-right:auto}
+
+  /* load animation */
+  .reveal{opacity:0;transform:translateY(14px);animation:rise .7s cubic-bezier(.2,.7,.2,1) forwards}
+  .reveal:nth-child(1){animation-delay:.05s}
+  .reveal:nth-child(2){animation-delay:.13s}
+  @keyframes rise{to{opacity:1;transform:none}}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="reveal">
+    <div class="eyebrow">Akron Food Works · Will it pay?</div>
+    <h1>Pre-sell first.<br><em>Then book the kitchen.</em></h1>
+    <p class="lede">Punch in your numbers and this tells you the one number that matters most: <b>how many orders to pre-sell before you book a session</b> — plus your profit per order and the plan that fits.</p>
+  </header>
+
+  <section class="card reveal">
+    <h2>Your numbers</h2>
+    <p class="sub">No wrong answers — estimate, then adjust. It updates as you type.</p>
+
+    <div class="grid">
+      <label class="full">
+        <span class="lbl">What are you selling?</span>
+        <input type="text" id="unit" value="orders" placeholder="meals, jars, dozen cookies…">
+        <span class="hint">Whatever you count and sell. Results will use this word.</span>
+      </label>
+
+      <label>
+        <span class="lbl">Which space will you use?</span>
+        <select id="space">
+          <option value="elevate">Elevate Kitchen — $19.25/hr</option>
+          <option value="create_side">Create Kitchen, one side — $19/hr</option>
+          <option value="create_full">Create Kitchen, full room — $25/hr</option>
+          <option value="prep">Prep Kitchen — $17.50/hr</option>
+          <option value="dish">Dishwashing / Mobile Cleanup — $15/hr</option>
+        </select>
+        <span class="hint" id="rateHint">Booked at $19.25/hr.</span>
+      </label>
+
+      <div>
+        <span class="lbl">Options</span>
+        <div class="checks">
+          <label class="chk"><input type="checkbox" id="offpeak"> Work off-peak to save</label>
+          <label class="chk"><input type="checkbox" id="mobile"> Food truck / mobile</label>
+        </div>
+      </div>
+
+      <label>
+        <span class="lbl">Hours per kitchen session</span>
+        <input type="number" id="hrs" value="3" min="0" step="0.5">
+        <span class="hint">Include setup &amp; cleanup. Minimum booking is 2 hours.</span>
+      </label>
+
+      <label>
+        <span class="lbl">Sessions per month</span>
+        <input type="number" id="sessions" value="4" min="0" step="1">
+        <span class="hint">e.g. one prep day a week = 4.</span>
+      </label>
+
+      <label>
+        <span class="lbl">How many <span class="unitword">orders</span> per session?</span>
+        <input type="number" id="perSession" value="40" min="0" step="1">
+        <span class="hint">How much you make in one session.</span>
+      </label>
+
+      <label>
+        <span class="lbl">Price per <span class="unitword">order</span></span>
+        <span class="money"><input type="number" id="price" value="14" min="0" step="0.25"></span>
+        <span class="hint">What the customer pays.</span>
+      </label>
+
+      <label>
+        <span class="lbl">Your cost per <span class="unitword">order</span></span>
+        <span class="money"><input type="number" id="cost" value="5" min="0" step="0.25"></span>
+        <span class="hint">Ingredients + packaging only.</span>
+      </label>
+
+      <label>
+        <span class="lbl">Monthly storage <small style="font-weight:500;color:var(--ink-soft)">(optional)</small></span>
+        <span class="money"><input type="number" id="storage" value="0" min="0" step="1"></span>
+        <span class="hint">Dry $15 · freezer/cooler $30 · full shelf $75.</span>
+      </label>
+    </div>
+  </section>
+
+  <section class="card results reveal">
+    <h2>Here's your plan</h2>
+    <div class="headline">
+      <div class="big" id="presellCard">
+        <div class="k">Pre-sell at least</div>
+        <div class="v" id="presell">—</div>
+        <div class="note" id="presellNote">…before you book a single session.</div>
+      </div>
+      <div class="big" id="profitCard">
+        <div class="k">Profit per <span class="unitword">order</span></div>
+        <div class="v" id="profit">—</div>
+        <div class="note" id="profitNote"></div>
+      </div>
+    </div>
+
+    <div class="strip">
+      <div class="cell"><div class="k">Hours / month</div><div class="v" id="hoursMo">—</div></div>
+      <div class="cell"><div class="k">Plan that fits</div><div class="v" id="plan" style="font-size:1.15rem;line-height:1.2">—</div></div>
+      <div class="cell"><div class="k">True cost / <span class="unitword">order</span></div><div class="v" id="trueCost">—</div></div>
+      <div class="cell"><div class="k">If you sell them all</div><div class="v" id="moProfit">—</div></div>
+    </div>
+
+    <div class="notes" id="notes"></div>
+
+    <div id="afw-account-bar" style="margin-top:18px"></div>
+  </section>
+
+  <footer>
+    <div class="mark">AKRON FOOD WORKS</div>
+    <div class="tag">Create · Incubate · Elevate</div>
+    <p class="disc">Estimates only, based on the Rev 4/26 rate sheet — confirm current rates and plan terms with staff. The 20/30/40-hour plans include a 5/10/15% discount on your hourly draw-down, so heavier users stretch their balance further.</p>
+  </footer>
+
+</div>
+
+<script src="afw-config.js"></script>
+<script src="afw-cloud.js"></script>
+<script>
+(function(){
+  const SPACES={
+    elevate:{peak:19.25, off:17.25, offOk:true},
+    create_side:{peak:19, off:17, offOk:true},
+    create_full:{peak:25, off:25, offOk:false},
+    prep:{peak:17.50, off:16, offOk:true},
+    dish:{peak:15, off:15, offOk:false}
+  };
+  const PLANS=[[6,115.5],[8,154],[12,231],[20,385],[30,577.5],[40,770]];
+
+  const $=id=>document.getElementById(id);
+  const ids=['unit','space','offpeak','mobile','hrs','sessions','perSession','price','cost','storage'];
+  const onInput=()=>{recalc(); if(typeof AFWCloud!=='undefined') AFWCloud.scheduleSave();};
+  ids.forEach(i=>{const el=$(i);el.addEventListener('input',onInput);el.addEventListener('change',onInput);});
+
+  const money=n=>'$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  const money0=n=>'$'+Math.round(n).toLocaleString('en-US');
+
+  function recalc(){
+    const unitRaw=($('unit').value||'orders').trim()||'orders';
+    document.querySelectorAll('.unitword').forEach(e=>e.textContent=unitRaw);
+
+    const sp=SPACES[$('space').value];
+    const offOk=sp.offOk;
+    const off=$('offpeak').checked && offOk;
+    const rate=off?sp.off:sp.peak;
+    $('rateHint').textContent= offOk
+      ? (off?('Off-peak rate: '+money(rate)+'/hr.'):('Booked at '+money(rate)+'/hr. Off-peak available.'))
+      : ('Booked at '+money(rate)+'/hr. No off-peak rate for this space.');
+
+    const hrsIn=parseFloat($('hrs').value)||0;
+    const billHrs=Math.max(hrsIn>0?hrsIn:0, hrsIn>0?2:0); // enforce 2hr min only if they entered something
+    const sessions=parseFloat($('sessions').value)||0;
+    const perSession=parseFloat($('perSession').value)||0;
+    const price=parseFloat($('price').value)||0;
+    const cost=parseFloat($('cost').value)||0;
+    const storage=parseFloat($('storage').value)||0;
+    const mobile=$('mobile').checked;
+
+    const sessionCost=billHrs*rate;
+    const monthlyHours=billHrs*sessions;
+    const monthlyUnits=perSession*sessions;
+    const contribution=price-cost;
+
+    // pre-sell target: units to cover ONE session's kitchen cost
+    const presellEl=$('presell'), presellNote=$('presellNote'), presellCard=$('presellCard');
+    if(contribution>0 && sessionCost>0){
+      const n=Math.ceil(sessionCost/contribution);
+      presellEl.textContent=n+' ';
+      presellEl.innerHTML=n+' <small>'+unitRaw+'</small>';
+      presellCard.classList.remove('warn');
+      presellNote.textContent='…to cover one '+billHrs.toFixed(billHrs%1?1:0)+'-hr session ('+money(sessionCost)+'). Then book.';
+    }else{
+      presellCard.classList.add('warn');
+      presellEl.innerHTML='Set your price';
+      presellNote.textContent='Your price must be higher than your cost first.';
+    }
+
+    // profit per unit
+    const profitCard=$('profitCard'), profitEl=$('profit'), profitNote=$('profitNote');
+    const kitchenPerUnit=perSession>0?sessionCost/perSession:0;
+    const storagePerUnit=monthlyUnits>0?storage/monthlyUnits:0;
+    const trueCost=cost+kitchenPerUnit+storagePerUnit;
+    const profitUnit=price-trueCost;
+    if(price>0){
+      if(profitUnit>=0){
+        profitCard.classList.remove('warn');
+        profitEl.innerHTML=money(profitUnit);
+        const margin=price>0?Math.round(profitUnit/price*100):0;
+        profitNote.textContent=margin+'% margin after kitchen time.';
+      }else{
+        profitCard.classList.add('warn');
+        profitEl.innerHTML='Losing '+money(Math.abs(profitUnit));
+        profitNote.textContent='each '+unitRaw.replace(/s$/,'')+' — raise price or make more per session.';
+      }
+    }else{profitCard.classList.remove('warn');profitEl.textContent='—';profitNote.textContent='';}
+
+    // hours/month
+    $('hoursMo').innerHTML = monthlyHours>0 ? (Number.isInteger(monthlyHours)?monthlyHours:monthlyHours.toFixed(1))+' <small>hrs</small>' : '—';
+
+    // plan recommendation (balance-based: monthly spend at draw-down rate)
+    const spend=monthlyHours*rate;
+    const planEl=$('plan');
+    if(spend>0){
+      let chosen=null;
+      for(const [h,p] of PLANS){ if(p>=spend){chosen=[h,p];break;} }
+      // mobile commissary floor = 8hr / $154 plan
+      if(mobile && (!chosen || chosen[1]<154)){ chosen=[8,154]; }
+      if(chosen){
+        planEl.innerHTML=chosen[0]+'-hr<br><small>'+money0(chosen[1])+'/mo</small>';
+      }else{
+        planEl.innerHTML='40+ hr<br><small>talk to us</small>';
+      }
+    }else{planEl.textContent='—';}
+
+    // monthly profit if sold out
+    const moEl=$('moProfit');
+    if(monthlyUnits>0 && price>0){
+      const revenue=price*monthlyUnits;
+      const totalCost=spend + cost*monthlyUnits + storage;
+      const moProfit=revenue-totalCost;
+      moEl.classList?null:null;
+      moEl.innerHTML=(moProfit<0?'–'+money0(Math.abs(moProfit)):money0(moProfit));
+    }else{moEl.textContent='—';}
+
+    // true cost per unit
+    $('trueCost').innerHTML = (price>0||trueCost>0) && perSession>0 ? money(trueCost) : '—';
+
+    // contextual notes
+    const notes=[];
+    if(hrsIn>0 && hrsIn<2) notes.push('Bookings have a 2-hour minimum, so we counted this session as 2 hours.');
+    if(mobile) notes.push('As a mobile vendor, your commissary agreement requires at least 8 hours/month ($154 plan). Use off-days for pickup or catering so the facility earns all week.');
+    if(off) notes.push('Off-peak hours (overnight) lower your rate — a smart move while you\u2019re proving demand.');
+    notes.push('Once you\u2019ve got a steady pickup day, ask about a recurring Time-Based block (5 hrs/week in the Create Kitchen) to lock your slot.');
+    notes.push('Extra hours beyond your plan balance are billed at the calendar rate at the end of the booking day.');
+    $('notes').innerHTML=notes.map(n=>'<p>'+n+'</p>').join('');
+  }
+
+  recalc();
+
+  /* ---- AFW Cloud: optional save-your-scenario (additive only) ---- */
+  function collectState(){
+    const out={_tool:'hours-that-pay',_version:1};
+    ids.forEach(i=>{const el=$(i);out[i]=(el.type==='checkbox')?el.checked:el.value;});
+    return out;
+  }
+  function applyState(data){
+    if(!data) return;
+    ids.forEach(i=>{
+      if(!(i in data)) return;
+      const el=$(i);
+      if(el.type==='checkbox') el.checked=!!data[i];
+      else el.value=data[i];
+    });
+    recalc();
+  }
+  if(typeof AFWCloud!=='undefined'){
+    const defaultState=JSON.stringify(collectState());
+    AFWCloud.init({
+      toolId:'hours-that-pay',
+      mount:'#afw-account-bar',
+      getData:collectState,
+      onData:(data,meta)=>{
+        // Only ask before replacing if they've already changed something this visit.
+        if(JSON.stringify(collectState())===defaultState
+           || confirm('Load your saved scenario from '+new Date(meta.updatedAt).toLocaleString()+'? This replaces the numbers on screen.')){
+          applyState(data);
+        }
+      },
+    });
+  }
+})();
+</script>
+</body>
+</html>

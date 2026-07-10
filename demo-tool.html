@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AFW Cloud Save — Demo Tool</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --afw-cream:  #FAF5EA;
+    --afw-forest: #1F3D2B;
+    --afw-amber:  #B7791F;
+    --afw-gold:   #D9A441;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 24px 16px 64px;
+    background: var(--afw-cream);
+    color: var(--afw-forest);
+    font-family: 'Hanken Grotesk', system-ui, sans-serif;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; }
+  h1 {
+    font-family: 'Fraunces', Georgia, serif;
+    font-size: 30px; margin: 0 0 4px;
+  }
+  .sub { margin: 0 0 20px; opacity: .8; }
+  #afw-account-bar { margin-bottom: 20px; }
+  .card {
+    background: #fff; border: 1px solid rgba(31,61,43,.25);
+    border-radius: 12px; padding: 20px; margin-bottom: 16px;
+  }
+  label { display: block; font-weight: 600; margin: 14px 0 4px; }
+  label:first-child { margin-top: 0; }
+  input[type=text], textarea, select {
+    width: 100%; padding: 9px 12px; font: inherit;
+    border: 1px solid rgba(31,61,43,.4); border-radius: 8px;
+    background: var(--afw-cream); color: inherit;
+  }
+  textarea { min-height: 80px; resize: vertical; }
+  .row { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+  button {
+    padding: 9px 16px; font: inherit; font-weight: 700; cursor: pointer;
+    border: none; border-radius: 8px;
+    background: var(--afw-forest); color: var(--afw-cream);
+  }
+  button.secondary {
+    background: transparent; color: var(--afw-forest);
+    border: 1px solid var(--afw-forest);
+  }
+  .hint { font-size: 13px; opacity: .75; margin-top: 10px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Cloud Save Demo</h1>
+  <p class="sub">A stand-in tool proving the pattern: works without an account, saves to the cloud when signed in, and JSON export/import always remains as the offline fallback.</p>
+
+  <div id="afw-account-bar"></div>
+
+  <div class="card">
+    <label for="bizName">Business name</label>
+    <input type="text" id="bizName" placeholder="e.g., Angela's Sweet Rolls">
+
+    <label for="product">Main product</label>
+    <input type="text" id="product" placeholder="e.g., Cinnamon rolls, dozen">
+
+    <label for="phase">Where are you right now?</label>
+    <select id="phase">
+      <option value="">Choose one…</option>
+      <option>Exploring the idea</option>
+      <option>Getting ready to join the kitchen</option>
+      <option>In the kitchen, landing first sales</option>
+      <option>Selling regularly, building systems</option>
+    </select>
+
+    <label for="notes">Notes</label>
+    <textarea id="notes" placeholder="Anything you want to remember for next time…"></textarea>
+
+    <div class="row">
+      <button type="button" id="btnExport">Export JSON</button>
+      <button type="button" class="secondary" id="btnImport">Import JSON</button>
+      <input type="file" id="fileImport" accept=".json,application/json" style="display:none">
+    </div>
+    <p class="hint">Type in any field — if you're signed in, watch the status flip to "Saving…" then "Saved ✓". Reload the page or open it on another device to see your data come back.</p>
+  </div>
+</div>
+
+<script src="afw-config.js"></script>
+<script src="afw-cloud.js"></script>
+<script>
+  const FIELDS = ['bizName', 'product', 'phase', 'notes'];
+
+  function collectToolState() {
+    const out = { _tool: 'cloud-save-demo', _version: 1 };
+    FIELDS.forEach(id => { out[id] = document.getElementById(id).value; });
+    return out;
+  }
+
+  function applyToolState(data) {
+    if (!data) return;
+    FIELDS.forEach(id => {
+      if (typeof data[id] === 'string') document.getElementById(id).value = data[id];
+    });
+  }
+
+  function formIsEmpty() {
+    return FIELDS.every(id => !document.getElementById(id).value.trim());
+  }
+
+  // --- Wire up cloud save (login always optional) ---
+  AFWCloud.init({
+    toolId: 'cloud-save-demo',
+    mount: '#afw-account-bar',
+    getData: collectToolState,
+    onData: (cloudData, meta) => {
+      // If the person already typed something this session, don't clobber it silently.
+      if (formIsEmpty() || confirm('Load your saved version from ' + new Date(meta.updatedAt).toLocaleString() + '? This replaces what is on screen.')) {
+        applyToolState(cloudData);
+      }
+    },
+  });
+
+  FIELDS.forEach(id => {
+    document.getElementById(id).addEventListener('input', () => AFWCloud.scheduleSave());
+  });
+
+  // --- JSON export/import: unchanged from the existing tool pattern ---
+  document.getElementById('btnExport').addEventListener('click', () => {
+    const blob = new Blob([JSON.stringify(collectToolState(), null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'afw-cloud-save-demo.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  document.getElementById('btnImport').addEventListener('click', () => {
+    document.getElementById('fileImport').click();
+  });
+
+  document.getElementById('fileImport').addEventListener('change', (e) => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try {
+        applyToolState(JSON.parse(reader.result));
+        AFWCloud.scheduleSave(); // imported data syncs up if signed in
+      } catch (err) {
+        alert('That file is not valid JSON.');
+      }
+    };
+    reader.readAsText(f);
+    e.target.value = '';
+  });
+</script>
+</body>
+</html>

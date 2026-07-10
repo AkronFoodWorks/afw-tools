@@ -1,0 +1,53 @@
+<!-- =====================================================================
+  Akron Food Works — magic-link email template
+  Paste into: Supabase Dashboard → Authentication → Emails → Magic Link
+  Suggested subject line:  Your Akron Food Works sign-in link
+  {{ .ConfirmationURL }} is filled in by Supabase automatically.
+  (Email clients need inline styles and table layout — hence the old-school
+  markup. Fonts fall back to Georgia/system since most clients block webfonts.)
+===================================================================== -->
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background-color:#FBF6EC;padding:32px 16px;">
+  <tr>
+    <td align="center">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="max-width:520px;background-color:#FFFDF8;border:1px solid #E2D9C6;border-radius:14px;padding:36px 32px;font-family:Arial,Helvetica,sans-serif;color:#23372B;">
+        <tr>
+          <td style="font-size:11px;letter-spacing:4px;text-transform:uppercase;color:#C8612E;font-weight:bold;padding-bottom:14px;">
+            Akron Food Works
+          </td>
+        </tr>
+        <tr>
+          <td style="font-family:Georgia,'Times New Roman',serif;font-size:26px;font-weight:bold;line-height:1.15;padding-bottom:14px;">
+            Pick up right where you left off
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:15px;line-height:1.6;color:#4A5A4E;padding-bottom:24px;">
+            Tap the button below to sign in — no password to remember. Your work in the AFW tools will be saved to your account and waiting for you on any device.
+          </td>
+        </tr>
+        <tr>
+          <td align="center" style="padding-bottom:24px;">
+            <a href="{{ .ConfirmationURL }}"
+               style="display:inline-block;background-color:#2C5440;color:#FBF6EC;text-decoration:none;font-size:16px;font-weight:bold;padding:13px 30px;border-radius:10px;">
+              Sign me in
+            </a>
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:13px;line-height:1.6;color:#4A5A4E;border-top:1px solid #E2D9C6;padding-top:18px;">
+            This link works once and expires in an hour. If you didn't request it, you can safely ignore this email — nothing happens without the link.
+            <br><br>
+            Questions? Just reply — we're happy to help.
+          </td>
+        </tr>
+        <tr>
+          <td style="font-size:12px;color:#4A5A4E;padding-top:22px;">
+            Akron Food Works &middot; a program of The Well CDC<br>
+            647 E. Market St., Akron, Ohio<br>
+            Create &middot; Incubate &middot; Elevate
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>
+</table>
