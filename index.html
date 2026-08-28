@@ -51,8 +51,15 @@
         phases: ["explore","readiness","create","incubate","elevate"], // any that apply
         format: "Interactive tool" | "Guide" | "Worksheet" | "Templates",
         status: "available" | "pending" | "soon",
-        href:   "./afw-tool-name.html"   // omit for "soon"
+        href:   "./afw-tool-name.html",  // omit for "soon"
+        newTab: true                     // OPTIONAL — opens in a new tab
       }
+
+    NOTE ON newTab: it is its own property. Do NOT try to put
+    target="blank" inside the href string — the quotes end the
+    string early and the whole script stops running, which blanks
+    every card on the page. (Also: the correct HTML value is
+    "_blank" with an underscore; plain "blank" just names a window.)
     The card, its phase tags, and the filter behavior are all
     generated automatically. Nothing else needs editing.
 
@@ -97,6 +104,7 @@
     padding:0 20px 72px;
   }
   .wrap{max-width:1020px;margin:0 auto}
+  .account{margin:18px 0 4px;display:grid;gap:12px}
 
   /* ---------- header ---------- */
   header{padding:40px 0 8px}
@@ -280,6 +288,13 @@
     </div>
   </header>
 
+  <!-- ACCOUNT: sign-in lives here, on the hub, on purpose. Signing
+       in once carries into every tool page on this site. -->
+  <section class="account" aria-label="Your account">
+    <div id="afw-account"></div>
+    <div id="afw-saved"></div>
+  </section>
+
   <section class="picker" aria-label="Filter tools by where you are">
     <p class="picker-label">Where are you right now?</p>
     <div class="chips" id="chips" role="group" aria-label="Journey stage filters">
@@ -322,8 +337,9 @@ const TOOLS = [
     desc: "A guided inventory of your product, customers, money, and day-to-day — see where you stand and leave a staff conversation with clear next steps.",
     phases: ["explore","readiness"],
     format: "Worksheet",
-    status: "available",
-    href: "./afw-readiness-checkin.pdf"
+    status: "pending",   /* the PDF isn't in the repo yet — this 404s.
+                            flip back to "available" once it's uploaded. */
+    href: ""
   },
   {
     name: "Hours-That-Pay Calculator",
@@ -331,7 +347,8 @@ const TOOLS = [
     phases: ["readiness","create"],
     format: "Interactive tool",
     status: "available",
-    href: "./afw-hours-that-pay.html"
+    href: "./afw-hours-that-pay.html",
+    newTab: true
   },
   {
     name: "Food Cost & Pricing Tool",
@@ -455,7 +472,7 @@ function render(){
       <h3>${t.name}</h3>
       <p>${t.desc}</p>
       <div class="tags">${t.phases.map(p => `<span class="tag">${PHASE_LABEL[p]}</span>`).join("")}</div>
-      ${linkable ? `<a class="open" href="${t.href}">Open</a>` : ""}
+      ${linkable ? `<a class="open" href="${t.href}"${t.newTab ? ` target="_blank" rel="noopener"` : ``}>Open</a>` : ""}
       ${pending ? `<span class="pending-note">Ask AFW staff — link coming soon</span>` : ""}
     </article>`;
   }).join("");
@@ -481,6 +498,24 @@ chips.forEach(chip => chip.addEventListener("click", () => {
 
 render();
 applyFilter("all");
+</script>
+
+<!-- ============================================================
+     CLOUD SAVE (magic-link accounts)
+     Order matters: config first, then the engine.
+     Blank the key in afw-config.js to switch this off entirely.
+     ============================================================ -->
+<script src="./afw-config.js"></script>
+<script src="./afw-cloud.js"></script>
+<script>
+  AFWCloud.mountAccountBar("#afw-account");
+
+  /* Maps a saved item back to the tool that made it. The KEY must
+     match the "tool" value that tool passes to mountToolBar. */
+  AFWCloud.mountSavedWork("#afw-saved", {
+    "food-cost":   { name: "Food Cost & Pricing Tool", href: "./afw-food-cost-pricing.html" },
+    "sop-builder": { name: "SOP & Recipe Card Builder", href: "./afw-sop-builder.html" }
+  });
 </script>
 </body>
 </html>

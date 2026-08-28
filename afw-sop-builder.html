@@ -377,6 +377,9 @@
     </nav>
   </header>
 
+  <!-- Cloud save bar. Stays empty until accounts are set up. -->
+  <div id="afw-toolbar" class="no-print" style="margin:0 0 18px"></div>
+
   <!-- ============ HOME ============ -->
   <section class="screen active" id="screen-home">
     <div class="choices">
@@ -1011,6 +1014,23 @@ function addToBinder(data, filename){
   return true;
 }
 
+/* ---------- whole-binder capture / restore ----------
+   The unit a member saves to their account is the WHOLE binder,
+   not one card — that matches how the binder is used, and means
+   one save carries every SOP they've built. Individual .json
+   download/import is untouched and still works alongside this. */
+function captureBinder(){
+  return { schema:"afw-binder-v1", items: binderItems.map(it=>({data:it.data, filename:it.filename})) };
+}
+
+function applyBinder(saved){
+  if(!saved || saved.schema!=="afw-binder-v1" || !Array.isArray(saved.items)) throw new Error("shape");
+  binderItems = saved.items
+    .filter(it=>it && it.data && it.data.schema==="afw-sop-v1")
+    .map(it=>({data:it.data, filename:it.filename||"saved.json"}));
+  if(document.getElementById("screen-binder")) renderBinder();
+}
+
 function downloadSOP(){
   pullFormIntoSOP();
   const blob = new Blob([JSON.stringify(sop,null,2)], {type:"application/json"});
@@ -1148,6 +1168,18 @@ function escHTML(s){
 }
 /* legacy alias — display contexts */
 const esc = escHTML;
+</script>
+<!-- ---------- cloud save (see afw-cloud.js) ---------- -->
+<script src="./afw-config.js"></script>
+<script src="./afw-cloud.js"></script>
+<script>
+  AFWCloud.mountToolBar("#afw-toolbar", {
+    tool:         "sop-builder",        /* must match the key in index.html */
+    label:        "binder",
+    serialize:    () => captureBinder(),
+    deserialize:  (data) => applyBinder(data),
+    suggestTitle: () => "My SOP binder"
+  });
 </script>
 </body>
 </html>

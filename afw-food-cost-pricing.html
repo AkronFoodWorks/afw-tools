@@ -227,6 +227,9 @@ label{display:block;font-size:12.5px;font-weight:600;color:var(--ink-soft);
   <div class="brandline"><b>Create</b> · Incubate · Elevate</div>
 </header>
 
+<!-- Cloud save bar. Empty and invisible until accounts are set up. -->
+<div id="afw-toolbar" style="max-width:1180px;margin:16px auto 0;padding:0 18px"></div>
+
 <div class="wrap">
 
   <!-- ============ INPUT COLUMN ============ -->
@@ -1011,9 +1014,36 @@ $("#suggest").addEventListener("click",e=>{
 
 $("#miniBar").addEventListener("click",()=>$("#card").scrollIntoView({behavior:"smooth"}));
 
-/* ---------- save / load ---------- */
+/* ---------- save / load ----------
+   captureState() and applyLoadedState() are the single definition
+   of "what a saved cost card is". The download button, the upload
+   button, and cloud saving all go through these two, so a change
+   to the data model only has to be made once. */
+function captureState(){ return {...S, fileVersion:2}; }
+
+function applyLoadedState(loaded){
+  if(typeof loaded!=="object"||loaded===null||Array.isArray(loaded)) throw new Error("shape");
+  ["ingredients","packaging","helpers","extrasList"].forEach(k=>{ if(!Array.isArray(loaded[k])) loaded[k]=[]; });
+  Object.assign(S, loaded);
+  if(S.type && !TYPES[S.type]) S.type=null;
+  if(S.type) setType(S.type);
+  if(loaded.targetPct!=null) S.targetPct=loaded.targetPct;
+  $("#productName").value=S.productName||"";
+  $("#yieldQty").value=S.yieldQty??"";
+  $("#yieldUnit").value=S.yieldUnit||"";
+  $("#ownerHours").value=S.ownerHours??"";
+  $("#ownerRate").value=S.ownerRate??20;
+  $("#kitchenHours").value=S.kitchenHours??"";
+  $("#kitchenRateSel").value=S.kitchenRateSel||"19.25";
+  if(S.kitchenRateSel==="custom"){$("#customRateField").classList.add("on");$("#kitchenRateCustom").value=S.kitchenRateCustom??"";}
+  $("#serviceFee").value=S.serviceFee??"";
+  $("#price").value=S.price??"";
+  $("#targetPct").value=S.targetPct??"";
+  renderIngredients(); renderPackaging(); renderHelpers(); renderExtras(); render();
+}
+
 $("#btnSave").addEventListener("click",()=>{
-  const data=JSON.stringify({...S, fileVersion:2},null,2);
+  const data=JSON.stringify(captureState(),null,2);
   const blob=new Blob([data],{type:"application/json"});
   const a=document.createElement("a");
   const name=(S.productName||"recipe").replace(/[^a-z0-9]+/gi,"_").toLowerCase();
@@ -1025,25 +1055,7 @@ $("#fileInput").addEventListener("change",e=>{
   const f=e.target.files[0]; if(!f)return;
   const r=new FileReader();
   r.onload=()=>{ try{
-    const loaded=JSON.parse(r.result);
-    if(typeof loaded!=="object"||loaded===null||Array.isArray(loaded)) throw new Error("shape");
-    ["ingredients","packaging","helpers","extrasList"].forEach(k=>{ if(!Array.isArray(loaded[k])) loaded[k]=[]; });
-    Object.assign(S, loaded);
-    if(S.type && !TYPES[S.type]) S.type=null;
-    if(S.type) setType(S.type);
-    if(loaded.targetPct!=null) S.targetPct=loaded.targetPct;
-    $("#productName").value=S.productName||"";
-    $("#yieldQty").value=S.yieldQty??"";
-    $("#yieldUnit").value=S.yieldUnit||"";
-    $("#ownerHours").value=S.ownerHours??"";
-    $("#ownerRate").value=S.ownerRate??20;
-    $("#kitchenHours").value=S.kitchenHours??"";
-    $("#kitchenRateSel").value=S.kitchenRateSel||"19.25";
-    if(S.kitchenRateSel==="custom"){$("#customRateField").classList.add("on");$("#kitchenRateCustom").value=S.kitchenRateCustom??"";}
-    $("#serviceFee").value=S.serviceFee??"";
-    $("#price").value=S.price??"";
-    $("#targetPct").value=S.targetPct??"";
-    renderIngredients(); renderPackaging(); renderHelpers(); renderExtras(); render();
+    applyLoadedState(JSON.parse(r.result));
   }catch(err){ alert("That file couldn't be read as a saved recipe. Make sure it's an AFW_costcard file saved from this tool, and that it hasn't been edited."); } };
   r.readAsText(f);
   e.target.value="";
@@ -1096,6 +1108,18 @@ renderHelpers();
 renderExtras();
 renumberSteps();
 render();
+</script>
+<!-- ---------- cloud save (see afw-cloud.js) ---------- -->
+<script src="./afw-config.js"></script>
+<script src="./afw-cloud.js"></script>
+<script>
+  AFWCloud.mountToolBar("#afw-toolbar", {
+    tool:         "food-cost",          /* must match the key in index.html */
+    label:        "cost card",
+    serialize:    () => captureState(),
+    deserialize:  (data) => applyLoadedState(data),
+    suggestTitle: () => S.productName || ""
+  });
 </script>
 </body>
 </html>
