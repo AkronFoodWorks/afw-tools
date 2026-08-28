@@ -1,0 +1,1153 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akron Food Works — SOP & Recipe Card Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  ============================================================
+  AKRON FOOD WORKS — SOP & RECIPE CARD BUILDER
+  ============================================================
+  BUILD NOTES (staff / maintainer)
+
+  · Design system matches the Tool Hub / calculator family:
+    Fraunces (display) + Hanken Grotesk (body); cream / forest
+    green / amber / gold palette.
+
+  · PURPOSE: turns a founder's in-head process into a written,
+    repeatable SOP. Targets the Incubate-stage "founder
+    dependence" watch-for in the facilitator key. Built to be
+    filled out solo OR alongside staff in a TA session.
+
+  · TWO TEMPLATES: Production (a recipe/make-process) and
+    Operational (a recurring task like opening or packing an
+    order). Each has its own field set — see the two render
+    functions renderProductionForm() / renderOperationalForm().
+
+  · THE BINDER, DATA MODEL: this tool has NO server and NO
+    browser storage (localStorage/sessionStorage are
+    intentionally avoided — they don't persist reliably in
+    artifact/preview contexts and won't survive a move to
+    another host). Instead:
+      - Finishing a card lets you DOWNLOAD it as a small .json
+        file (the source of truth) alongside a printable card.
+      - The Binder screen lets you IMPORT any number of those
+        .json files to view them as a running, searchable index.
+      - Binder contents are session-only in this tool; the .json
+        files themselves are what should live in a shared
+        OneDrive/SharePoint folder as the durable record.
+    When these tools move to the website, swap the import/export
+    functions for real save/list API calls — the screens and
+    data shape (see the SOP object schema in code comments below)
+    don't need to change.
+
+  · EXPLANATIONS: every field has a one-line helper explaining
+    WHAT to enter and often WHY it matters (teach-while-it-
+    calculates). Section-level "why this matters" intros are
+    short by design — a deeper stage-overview explainer is a
+    future iteration per Kyle, not built here yet.
+
+  · No external dependencies beyond Google Fonts.
+  ============================================================
+-->
+<style>
+  :root{
+    --cream:#FBF6EC;
+    --paper:#FFFDF8;
+    --ink:#23372B;
+    --ink-soft:#4A5A4E;
+    --ink-faint:#7C897F;
+    --green:#2C5440;
+    --green-deep:#1E3A2D;
+    --amber:#C8612E;
+    --amber-soft:#E89B5A;
+    --gold:#D9A441;
+    --line:#E2D9C6;
+    --shadow:0 18px 40px -22px rgba(30,58,45,.45);
+    --display:'Fraunces',Georgia,serif;
+    --body:'Hanken Grotesk',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--body);color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 85% -8%, rgba(217,164,65,.16), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(44,84,64,.12), transparent 55%),
+      var(--cream);
+    min-height:100vh;line-height:1.55;padding:0 20px 80px;
+  }
+  .wrap{max-width:900px;margin:0 auto}
+
+  /* header */
+  header{padding:36px 0 6px}
+  .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .brand-name{font-family:var(--display);font-weight:600;font-size:1.1rem;color:var(--green-deep)}
+  .brand-sub{font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .eyebrow{font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);font-weight:700;margin:26px 0 10px}
+  h1{font-family:var(--display);font-weight:500;font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.06;letter-spacing:-.01em;max-width:22ch}
+  h1 em{font-style:italic;color:var(--green)}
+  .lede{margin-top:12px;font-size:1rem;color:var(--ink-soft);max-width:60ch}
+
+  /* nav row (mode switch, always visible) */
+  .modenav{display:flex;gap:10px;margin-top:26px;flex-wrap:wrap}
+  .modenav button{
+    font-family:var(--body);font-weight:700;font-size:.86rem;color:var(--green-deep);
+    background:var(--paper);border:1.5px solid var(--line);border-radius:999px;
+    padding:9px 18px;cursor:pointer;transition:.15s;
+  }
+  .modenav button:hover{border-color:var(--gold)}
+  .modenav button.active{background:var(--green);border-color:var(--green);color:var(--cream)}
+  .modenav button:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+
+  /* screens */
+  .screen{display:none;margin-top:30px}
+  .screen.active{display:block}
+
+  /* choice cards (home) */
+  .choices{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:16px;margin-top:8px}
+  .choice{
+    background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:24px;
+    cursor:pointer;transition:.18s;text-align:left;font-family:var(--body);
+    display:flex;flex-direction:column;gap:10px;
+  }
+  .choice:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--gold)}
+  .choice-icon{font-size:1.6rem}
+  .choice h3{font-family:var(--display);font-weight:600;font-size:1.2rem;color:var(--green-deep)}
+  .choice p{font-size:.9rem;color:var(--ink-soft)}
+  .choice .when{font-size:.78rem;color:var(--amber);font-weight:700}
+
+  /* form structure */
+  .section{background:var(--paper);border:1px solid var(--line);border-radius:18px;padding:26px 26px 22px;margin-bottom:18px}
+  .section h2{font-family:var(--display);font-weight:600;font-size:1.15rem;color:var(--green-deep);margin-bottom:4px}
+  .section .why{font-size:.86rem;color:var(--ink-soft);margin-bottom:18px;max-width:64ch}
+  label{display:block;font-size:.82rem;font-weight:700;color:var(--ink);margin-bottom:3px}
+  .help{font-size:.78rem;color:var(--ink-faint);margin-bottom:8px;line-height:1.4}
+  input[type=text],input[type=date],textarea,select{
+    width:100%;font-family:var(--body);font-size:.94rem;color:var(--ink);
+    background:var(--cream);border:1px solid var(--line);border-radius:10px;
+    padding:10px 12px;margin-bottom:16px;
+  }
+  input:focus,textarea:focus,select:focus{outline:2px solid var(--gold);outline-offset:1px;border-color:var(--gold)}
+  textarea{min-height:70px;resize:vertical}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .row3{display:grid;grid-template-columns:2fr 1fr 1fr;gap:12px}
+  @media (max-width:560px){.row2,.row3{grid-template-columns:1fr}}
+
+  /* repeatable rows */
+  .rep-list{display:flex;flex-direction:column;gap:14px;margin-bottom:6px}
+  .rep-item{
+    background:var(--cream);border:1px solid var(--line);border-radius:12px;
+    padding:14px 16px 4px 46px;position:relative;
+  }
+  .drag-handle{
+    position:absolute;left:0;top:0;bottom:0;width:36px;
+    border:none;border-right:1px dashed var(--line);
+    border-radius:12px 0 0 12px;
+    background:none;color:var(--ink-faint);
+    font-size:.95rem;letter-spacing:-1px;
+    display:flex;align-items:center;justify-content:center;
+    cursor:grab;touch-action:none;
+  }
+  .drag-handle:hover{color:var(--green);background:rgba(44,84,64,.05)}
+  .drag-handle:active{cursor:grabbing}
+  .drag-handle:focus-visible{outline:2px solid var(--gold);outline-offset:-2px}
+  .rep-num{
+    position:absolute;top:-10px;left:46px;background:var(--green);color:var(--cream);
+    font-size:.72rem;font-weight:700;padding:2px 9px;border-radius:999px;
+  }
+  .row-tools{position:absolute;top:8px;right:10px;display:flex;gap:6px;align-items:center}
+  .mv{
+    background:var(--paper);border:1px solid var(--line);border-radius:6px;
+    color:var(--ink-soft);font-size:.66rem;cursor:pointer;padding:3px 8px;line-height:1;
+  }
+  .mv:hover{border-color:var(--gold);color:var(--green-deep)}
+  .mv:focus-visible{outline:2px solid var(--gold);outline-offset:1px}
+  .rep-remove{
+    background:none;border:none;color:var(--amber);font-weight:700;font-size:.78rem;cursor:pointer;padding:3px 4px;
+  }
+  /* drag states */
+  body.dragging{user-select:none;-webkit-user-select:none}
+  body.dragging *{cursor:grabbing !important}
+  .drag-source{opacity:.35}
+  .drag-ghost{
+    position:fixed;z-index:999;pointer-events:none;
+    box-shadow:var(--shadow);opacity:.95;background:var(--cream);
+    border:1px solid var(--gold);border-radius:12px;
+    padding:14px 16px 4px 46px;
+  }
+  .drop-before{box-shadow:0 -3px 0 0 var(--gold)}
+  .drop-after{box-shadow:0 3px 0 0 var(--gold)}
+  .add-btn{
+    font-family:var(--body);font-weight:700;font-size:.86rem;color:var(--green);
+    background:none;border:1.5px dashed var(--line);border-radius:10px;
+    padding:9px 14px;cursor:pointer;align-self:flex-start;
+  }
+  .add-btn:hover{border-color:var(--gold);color:var(--green-deep)}
+
+  /* stranger-test checklist */
+  .checklist{display:flex;flex-direction:column;gap:12px}
+  .check-row{display:flex;gap:12px;align-items:flex-start;background:var(--cream);border:1px solid var(--line);border-radius:12px;padding:12px 14px}
+  .check-row input{width:auto;margin:2px 0 0}
+  .check-row span{font-size:.92rem;color:var(--ink)}
+
+  /* buttons */
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:20px}
+  .btn{
+    font-family:var(--body);font-weight:700;font-size:.92rem;border:none;border-radius:10px;
+    padding:11px 20px;cursor:pointer;transition:.15s;
+  }
+  .btn-primary{background:var(--green);color:var(--paper)}
+  .btn-primary:hover{background:var(--green-deep)}
+  .btn-ghost{background:none;border:1.5px solid var(--line);color:var(--ink-soft)}
+  .btn-ghost:hover{border-color:var(--gold);color:var(--green-deep)}
+  .btn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+
+  /* card preview */
+  .card-preview{
+    background:var(--paper);border:1px solid var(--line);border-radius:18px;
+    padding:30px 32px;box-shadow:var(--shadow);
+  }
+  .card-preview .kicker{font-size:.7rem;letter-spacing:.16em;text-transform:uppercase;color:var(--amber);font-weight:700}
+  .card-preview h2{font-family:var(--display);font-weight:600;font-size:1.7rem;color:var(--green-deep);margin:6px 0 4px}
+  .card-meta{display:flex;flex-wrap:wrap;gap:14px;font-size:.82rem;color:var(--ink-soft);margin-bottom:18px;padding-bottom:14px;border-bottom:1px solid var(--line)}
+  .card-preview h4{font-family:var(--display);font-weight:600;font-size:1rem;color:var(--green);margin:18px 0 8px}
+  .card-preview ol,.card-preview ul{padding-left:22px;font-size:.92rem}
+  .card-preview li{margin-bottom:10px}
+  .checkpoint{display:block;font-size:.84rem;color:var(--ink-soft);font-style:italic;margin-top:2px}
+  .ing-table{width:100%;border-collapse:collapse;font-size:.9rem;margin-bottom:6px}
+  .ing-table td{padding:5px 8px;border-bottom:1px solid var(--line)}
+  .mistake-box{background:var(--cream);border-left:3px solid var(--amber);border-radius:0 8px 8px 0;padding:10px 14px;font-size:.88rem;color:var(--ink-soft);margin-top:14px}
+
+  /* binder */
+  .binder-toolbar{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-bottom:18px}
+  .binder-toolbar input[type=text]{max-width:240px;margin-bottom:0}
+  .file-btn{
+    font-family:var(--body);font-weight:700;font-size:.86rem;color:var(--green-deep);
+    background:var(--paper);border:1.5px solid var(--line);border-radius:999px;
+    padding:9px 16px;cursor:pointer;display:inline-block;
+  }
+  .file-btn:hover{border-color:var(--gold)}
+  table.binder{width:100%;border-collapse:collapse;background:var(--paper);border:1px solid var(--line);border-radius:14px;overflow:hidden}
+  table.binder th{
+    text-align:left;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-soft);background:var(--cream);padding:12px 14px;cursor:pointer;user-select:none;
+  }
+  table.binder td{padding:12px 14px;border-top:1px solid var(--line);font-size:.9rem}
+  table.binder tr.datarow{cursor:pointer}
+  table.binder tr.datarow:hover{background:rgba(44,84,64,.05)}
+  .type-pill{font-size:.68rem;font-weight:700;letter-spacing:.05em;text-transform:uppercase;padding:3px 9px;border-radius:999px}
+  .type-pill.production{background:rgba(44,84,64,.1);color:var(--green)}
+  .type-pill.operational{background:rgba(200,97,46,.1);color:var(--amber)}
+  .empty-note{background:var(--paper);border:1px dashed var(--line);border-radius:16px;padding:26px;color:var(--ink-soft);font-size:.94rem;max-width:56ch}
+
+  footer{margin-top:56px;padding-top:22px;border-top:1px solid var(--line);display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;font-size:.8rem;color:var(--ink-soft)}
+  footer .fbrand{font-family:var(--display);font-weight:600;color:var(--green-deep);font-size:.88rem}
+
+  /* per-ingredient icon + group-break controls */
+  .icon-row{display:flex;flex-wrap:wrap;gap:16px;align-items:flex-end;margin-top:2px;margin-bottom:10px}
+  .icon-row select{width:auto;min-width:200px;margin-bottom:0;font-size:.86rem;padding:8px 10px}
+  .inline-check{display:flex;align-items:center;gap:7px;font-size:.84rem;font-weight:600;color:var(--ink-soft);margin-bottom:0;padding-bottom:2px}
+  .inline-check input{width:auto;margin:0}
+
+  /* card mode toggle (Full SOP / Station Card) */
+  .card-mode-toggle{display:flex;gap:8px;margin-bottom:14px}
+  .mode-btn{
+    font-family:var(--body);font-weight:700;font-size:.86rem;color:var(--green-deep);
+    background:var(--paper);border:1.5px solid var(--line);border-radius:999px;
+    padding:8px 16px;cursor:pointer;transition:.15s;
+  }
+  .mode-btn:hover{border-color:var(--gold)}
+  .mode-btn.active{background:var(--green);border-color:var(--green);color:var(--cream)}
+  .mode-btn:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+
+  /* station card — dark, high-contrast build sequence */
+  .card-preview.station{
+    background:linear-gradient(160deg,var(--green-deep),var(--green) 85%);
+    color:var(--cream);
+    -webkit-print-color-adjust:exact; print-color-adjust:exact;
+  }
+  .station-kicker{color:var(--gold)}
+  .station-title{color:var(--cream) !important}
+  .station-meta{color:rgba(251,246,236,.75);border-bottom-color:rgba(251,246,236,.2)}
+  .station-subhead{color:var(--gold) !important;margin-top:24px}
+  .chain{position:relative;margin:10px 0 4px}
+  .chain::before{content:"";position:absolute;left:20px;top:20px;bottom:20px;width:2px;background:rgba(251,246,236,.3)}
+  .chain-row{position:relative;display:flex;gap:14px;align-items:flex-start;padding:9px 0;z-index:1}
+  .chain-badge{
+    flex:0 0 auto;width:40px;height:40px;border-radius:50%;background:var(--cream);
+    display:flex;align-items:center;justify-content:center;color:var(--amber);
+    box-shadow:0 0 0 4px var(--green-deep);
+  }
+  .chain-badge svg{width:20px;height:20px}
+  .chain-badge.num{font-family:var(--display);font-weight:700;color:var(--green-deep);font-size:1.05rem}
+  .chain-text{padding-top:5px}
+  .chain-label{display:block;font-size:.7rem;letter-spacing:.08em;text-transform:uppercase;color:rgba(251,246,236,.65);font-weight:700}
+  .chain-detail{display:block;font-family:var(--display);font-weight:600;font-size:1.05rem;color:var(--cream)}
+  .chain-note{display:block;font-size:.8rem;font-style:italic;color:rgba(251,246,236,.72);margin-top:3px}
+  .chain-divider{text-align:center;letter-spacing:5px;color:rgba(251,246,236,.4);margin:0 0 0 40px;font-size:.8rem;position:relative;z-index:1}
+  .station-mistake{
+    background:rgba(251,246,236,.08);border-left:3px solid var(--amber);border-radius:0 8px 8px 0;
+    display:flex;gap:12px;align-items:flex-start;color:rgba(251,246,236,.92);padding:12px 14px;margin-top:20px;
+  }
+  .station-mistake strong{color:var(--gold)}
+  .station-mistake .chain-badge{width:30px;height:30px;box-shadow:none;background:rgba(251,246,236,.9);flex:0 0 30px}
+  .station-mistake .chain-badge svg{width:16px;height:16px}
+
+  /* print-only brand strip inside cards (hidden on screen) */
+  .print-brand{display:none}
+  /* binder print-all container never shows on screen */
+  #binder-full-print{display:none}
+
+  @media print{
+    @page{margin:.45in}
+    .modenav,.actions,.binder-toolbar,footer,.no-print{display:none !important}
+    header{display:none !important}   /* hero wastes a third of the page; cards carry their own brand strip */
+    body{padding:0;background:var(--paper)}
+    * { -webkit-print-color-adjust:exact !important; print-color-adjust:exact !important; }
+    .screen{display:none !important}
+    .screen.print-target{display:block !important;margin:0}
+    .card-preview{box-shadow:none;border:none;border-radius:0;padding:0}
+
+    /* brand strip appears at the top of every printed card */
+    .print-brand{
+      display:flex;align-items:baseline;gap:10px;
+      border-bottom:2px solid var(--green);padding-bottom:6px;margin-bottom:12px;
+    }
+    .pb-name{font-family:var(--display);font-weight:600;font-size:.95rem;color:var(--green-deep)}
+    .pb-sub{font-size:.62rem;letter-spacing:.14em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+    .card-preview.station .print-brand{border-bottom-color:var(--gold)}
+    .card-preview.station .pb-name{color:var(--cream)}
+    .card-preview.station .pb-sub{color:rgba(251,246,236,.7)}
+    .card-preview.station{padding:24px !important;border-radius:12px}
+
+    /* ---- compact one-page defaults for the FULL SOP card ---- */
+    .card-preview:not(.station){font-size:.92em}
+    .card-preview:not(.station) h2{font-size:1.4rem;margin:4px 0 2px}
+    .card-preview:not(.station) .card-meta{margin-bottom:10px;padding-bottom:8px;gap:10px;font-size:.78rem}
+    .card-preview:not(.station) h4{margin:10px 0 5px;font-size:.95rem}
+    .card-preview:not(.station) ol,.card-preview:not(.station) ul{font-size:.88rem}
+    .card-preview:not(.station) li{margin-bottom:5px}
+    .ing-table td{padding:3px 8px;font-size:.86rem}
+    .mistake-box{padding:7px 12px;margin-top:8px;font-size:.84rem}
+
+    /* ---- condensed mode (auto-applied when content is long) ---- */
+    .card-preview.condensed{font-size:.85em}
+    .card-preview.condensed h2{font-size:1.25rem}
+    .card-preview.condensed .ing-table{column-count:2;column-gap:24px;display:block}
+    .card-preview.condensed .ing-table tr{break-inside:avoid;display:flex;justify-content:space-between}
+    .card-preview.condensed .ing-table td{border-bottom:1px solid var(--line);flex:1;padding:2px 6px;font-size:.8rem}
+    .card-preview.condensed li{margin-bottom:3px}
+    .card-preview.condensed .checkpoint{font-size:.76rem}
+
+    /* page-break hygiene */
+    .card-preview li{page-break-inside:avoid}
+    .card-preview h4{page-break-after:avoid}
+    .mistake-box{page-break-inside:avoid}
+    .chain-row{page-break-inside:avoid}
+
+    /* ---- print-all-binder mode ---- */
+    #binder-full-print{display:none}
+    body.printing-all .screen{display:none !important}
+    body.printing-all #binder-full-print{display:block !important}
+    #binder-full-print .print-page{page-break-after:always}
+    #binder-full-print .print-page:last-child{page-break-after:auto}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="brand-name">Akron Food Works</span>
+      <span class="brand-sub">a program of The Well CDC</span>
+    </div>
+    <p class="eyebrow">SOP &amp; Recipe Card Builder</p>
+    <h1>Get it out of your head, onto a <em>card</em></h1>
+    <p class="lede">If you took a week off, could someone else do this exactly the way you do it? This tool turns what you already know into a written process — for your first hire, a covering staffer, or just for you on a bad day.</p>
+
+    <nav class="modenav no-print">
+      <button class="active" data-mode="home">Home</button>
+      <button data-mode="build">Build a new SOP</button>
+      <button data-mode="binder">Open the binder</button>
+    </nav>
+  </header>
+
+  <!-- ============ HOME ============ -->
+  <section class="screen active" id="screen-home">
+    <div class="choices">
+      <button class="choice" onclick="goBuild('production')">
+        <span class="choice-icon">🥣</span>
+        <h3>Production SOP</h3>
+        <p>A recipe or make-process — ingredients, steps, and what "done right" looks like.</p>
+        <span class="when">Use for: a sauce, a bake, a batch item</span>
+      </button>
+      <button class="choice" onclick="goBuild('operational')">
+        <span class="choice-icon">🗂️</span>
+        <h3>Operational SOP</h3>
+        <p>A recurring task — opening, closing, packing an order, restocking.</p>
+        <span class="when">Use for: anything that happens on a schedule or trigger</span>
+      </button>
+      <button class="choice" onclick="setMode('binder')">
+        <span class="choice-icon">📚</span>
+        <h3>Open the binder</h3>
+        <p>Import saved SOP files to see everything you've documented so far, in one index.</p>
+        <span class="when">Use for: reviewing, printing, or handing off a set</span>
+      </button>
+    </div>
+  </section>
+
+  <!-- ============ BUILD ============ -->
+  <section class="screen" id="screen-build"></section>
+
+  <!-- ============ REVIEW / STRANGER TEST ============ -->
+  <section class="screen" id="screen-review"></section>
+
+  <!-- ============ CARD OUTPUT ============ -->
+  <section class="screen" id="screen-card"></section>
+
+  <!-- ============ BINDER ============ -->
+  <section class="screen" id="screen-binder"></section>
+
+  <footer>
+    <span class="fbrand">Akron Food Works</span>
+    <span>Create · Incubate · Elevate</span>
+    <span>647 E. Market St., Akron, Ohio</span>
+  </footer>
+
+  <!-- top-level print-all container: must live OUTSIDE the .screen elements
+       so hiding screens for print doesn't hide it too -->
+  <div id="binder-full-print"></div>
+</div>
+
+<script>
+/* ===================== STATE ===================== */
+let sop = null;          // the SOP currently being built
+let binderItems = [];    // session list of {data, filename} for the binder view
+let sortKey = "updated", sortDir = "desc";
+
+/* SOP object schema (this is the .json shape saved/imported):
+{
+  schema: "afw-sop-v1",
+  type: "production" | "operational",
+  name, category, yield, equipment, ingredients:[{name,amount,unit}],
+  steps:[{text, checkpoint}]  // checkpoint only used for production
+  commonMistakes,             // production only
+  trigger, responsible, doneCondition,  // operational only
+  owner, updated, version
+}
+*/
+
+function blankSOP(type){
+  return {
+    schema:"afw-sop-v1", type,
+    name:"", category:"", yield:"", equipment:"",
+    ingredients: type==="production" ? [{name:"",amount:"",unit:"",icon:"",groupBreak:false}] : [],
+    steps: [ type==="production" ? {text:"",checkpoint:""} : {text:""} ],
+    commonMistakes:"", trigger:"", responsible:"", doneCondition:"",
+    owner:"", updated: new Date().toISOString().slice(0,10), version:"v1"
+  };
+}
+
+/* ===================== STATION CARD ICON SET =====================
+   Small built-in line-icon glyph set used only on the Station Card
+   view (Production SOPs). Each ingredient can be: left on "Auto"
+   (matched by keyword against the ingredient name), forced to a
+   specific icon, or forced to "generic" (plate glyph, no guess).
+   Steps use numbered badges instead of icons. Common mistakes use
+   the fixed "warning" glyph. To add an icon: add an SVG string to
+   ICONS, a label to ICON_LABELS, and keywords to ICON_KEYWORDS.
+=================================================================== */
+const ICONS = {
+  bread: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M4 11c0-4 3.5-7 8-7s8 3 8 7v6a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2v-6z"/><path d="M4 13.5h16"/></svg>`,
+  sauce: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="9" width="10" height="11" rx="2"/><rect x="9" y="5" width="6" height="4" rx="1"/><path d="M9 13.5h6"/></svg>`,
+  cheese: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17 12 5l9 12z"/><circle cx="11" cy="14" r=".7" fill="currentColor" stroke="none"/><circle cx="14.5" cy="15.3" r=".7" fill="currentColor" stroke="none"/><circle cx="9.3" cy="16.3" r=".7" fill="currentColor" stroke="none"/></svg>`,
+  protein: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 4c2 0 4.2 2 4.2 4.6 0 2-1.3 3.3-2.7 4.5l-3.6 3.5a2.4 2.4 0 1 1-3.4-3.4l3.5-3.6C13.3 8.6 12 7.3 12 5.3 12 4 12.9 4 14 4z"/><circle cx="7.3" cy="16.7" r="2.3"/></svg>`,
+  onion: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4c-1 1.7-1 2.6 0 3.6"/><path d="M8 9c0-2 1.5-3.2 4-3.2S16 7 16 9c2 1 3 3.2 3 5.8 0 3.8-3 6.8-7 6.8s-7-3-7-6.8C5 12.2 6 10 8 9z"/><path d="M12 9v13"/></svg>`,
+  tomato: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="13.5" r="7"/><path d="M9 6.2c1-1.4 2-1.9 3-1.9s2 .5 3 1.9"/><path d="M12 6.2v2"/></svg>`,
+  greens: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 19c0-8 4-14 14-14-1 9-6 14-14 14z"/><path d="M6.5 17.5c3-4 6-7 11.5-10.5"/></svg>`,
+  herb: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V8"/><path d="M12 8c-3 0-5-2-5-5 3 0 5 2 5 5z"/><path d="M12 12c3 0 5-2 5-5-3 0-5 2-5 5z"/><path d="M12 16c-2.5 0-4-1.5-4-4 2.5 0 4 1.5 4 4z"/></svg>`,
+  liquid: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3c4 5 6 8.7 6 11.5A6 6 0 1 1 6 14.5C6 11.7 8 8 12 3z"/></svg>`,
+  packaging: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M3 8l9-4 9 4-9 4-9-4z"/><path d="M3 8v9l9 4 9-4V8"/><path d="M12 12v9"/></svg>`,
+  generic: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="7.2"/><circle cx="12" cy="12" r="3"/></svg>`,
+  warning: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4 21 19H3z"/><path d="M12 10v4"/><circle cx="12" cy="16.4" r=".8" fill="currentColor" stroke="none"/></svg>`
+};
+const ICON_LABELS = {bread:"Bread",sauce:"Sauce / condiment",cheese:"Cheese",protein:"Protein",onion:"Onion / allium",tomato:"Tomato",greens:"Leafy greens",herb:"Herb / spice",liquid:"Liquid / dairy",packaging:"Packaging"};
+const ICON_KEYWORDS = {
+  bread:["bread","bun","sourdough","roll","tortilla","wrap","bagel","baguette","brioche","ciabatta","pita","toast"],
+  sauce:["sauce","mayo","dressing","aioli","mustard","ketchup","glaze","syrup","salsa","relish","chutney"],
+  cheese:["cheese","gouda","cheddar","mozzarella","parmesan","feta","swiss","provolone","brie"],
+  protein:["chicken","beef","pork","turkey","bacon","sausage","tofu","egg","salmon","fish","shrimp","ham","steak","meat"],
+  onion:["onion","garlic","shallot","leek"],
+  tomato:["tomato"],
+  greens:["arugula","lettuce","spinach","kale","greens","cabbage","romaine"],
+  herb:["basil","cilantro","parsley","herb","spice","seasoning","oregano","thyme","rosemary","dill"],
+  liquid:["milk","cream","oil","vinegar","broth","stock","juice","water","wine"],
+  packaging:["container","box","wrap","foil","bag","packaging","clamshell"]
+};
+function matchIcon(name){
+  const n = (name||"").toLowerCase();
+  for(const key in ICON_KEYWORDS){ if(ICON_KEYWORDS[key].some(w=>n.includes(w))) return key; }
+  return null;
+}
+function resolveIcon(ing){
+  if(ing.icon==="generic") return "generic";
+  if(ing.icon) return ing.icon;
+  return matchIcon(ing.name) || "generic";
+}
+function iconSelectOptions(selected){
+  const auto = `<option value="" ${!selected?"selected":""}>Auto-detect</option>`;
+  const specific = Object.keys(ICON_LABELS).map(k=>`<option value="${k}" ${selected===k?"selected":""}>${ICON_LABELS[k]}</option>`).join("");
+  const generic = `<option value="generic" ${selected==="generic"?"selected":""}>Generic (no specific icon)</option>`;
+  return auto + specific + generic;
+}
+
+/* ===================== NAV ===================== */
+function setMode(mode){
+  document.querySelectorAll(".modenav button").forEach(b=>b.classList.toggle("active", b.dataset.mode===mode));
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  if(mode==="home") document.getElementById("screen-home").classList.add("active");
+  if(mode==="build") document.getElementById("screen-build").classList.add("active");
+  if(mode==="binder"){ document.getElementById("screen-binder").classList.add("active"); renderBinder(); }
+}
+document.querySelectorAll(".modenav button").forEach(b=>{
+  b.addEventListener("click", ()=>{
+    if(b.dataset.mode==="build" && !sop) sop = blankSOP("production");
+    if(b.dataset.mode==="build") renderBuildForm();
+    setMode(b.dataset.mode);
+  });
+});
+
+function goBuild(type){
+  sop = blankSOP(type);
+  renderBuildForm();
+  setMode("build");
+}
+
+/* ===================== BUILD FORM ===================== */
+function renderBuildForm(){
+  const el = document.getElementById("screen-build");
+  el.innerHTML = sop.type==="production" ? productionFormHTML() : operationalFormHTML();
+  wireRepeatables();
+}
+
+function productionFormHTML(){
+  return `
+  <div class="section">
+    <h2>The basics</h2>
+    <p class="why">Enough detail that this card can be found later and matched to the right station.</p>
+    <label for="f-name">Process name</label>
+    <p class="help">What are you documenting? Give it the name your team already uses.</p>
+    <input type="text" id="f-name" value="${escAttr(sop.name)}" placeholder="e.g., Salsa Base">
+    <div class="row2">
+      <div>
+        <label for="f-category">Category</label>
+        <p class="help">A short tag so this is easy to find in the binder later.</p>
+        <input type="text" id="f-category" value="${escAttr(sop.category)}" placeholder="e.g., Sauce, Bake, Prep item">
+      </div>
+      <div>
+        <label for="f-yield">Yield</label>
+        <p class="help">How much does one batch make, at the scale this is written for?</p>
+        <input type="text" id="f-yield" value="${escAttr(sop.yield)}" placeholder="e.g., 3 gallons">
+      </div>
+    </div>
+    <label for="f-equipment">Equipment needed</label>
+    <p class="help">What should be gathered before starting? One item per line is fine.</p>
+    <textarea id="f-equipment" placeholder="Large stock pot&#10;Immersion blender&#10;Sheet pans">${escAttr(sop.equipment)}</textarea>
+  </div>
+
+  <div class="section">
+    <h2>Ingredients</h2>
+    <p class="why">Written at the scale this recipe actually runs — not a home-size version.</p>
+    <div class="rep-list" id="ing-list"></div>
+    <button type="button" class="add-btn" id="add-ingredient">+ Add ingredient</button>
+  </div>
+
+  <div class="section">
+    <h2>Steps</h2>
+    <p class="why">For each step, write what to do — and what "done right" looks, smells, or feels like. That second part is the one most people skip, and it's exactly where quality drifts once someone else is running the process.</p>
+    <div class="rep-list" id="step-list"></div>
+    <button type="button" class="add-btn" id="add-step">+ Add step</button>
+  </div>
+
+  <div class="section">
+    <h2>Common mistakes</h2>
+    <p class="why">What goes wrong most often here, and how do you catch it before it's a problem? Write the real failure case, not just the ideal one.</p>
+    <textarea id="f-mistakes" placeholder="e.g., Over-blending turns it to puree — pulse, don't run continuous.">${escAttr(sop.commonMistakes)}</textarea>
+  </div>
+
+  ${metaSectionHTML()}
+
+  <div class="actions no-print">
+    <button class="btn btn-ghost" onclick="setMode('home')">Cancel</button>
+    <button class="btn btn-primary" onclick="goReview()">Next: check it →</button>
+  </div>`;
+}
+
+function operationalFormHTML(){
+  return `
+  <div class="section">
+    <h2>The basics</h2>
+    <p class="why">What this task is, when it happens, and whose job it normally is.</p>
+    <label for="f-name">Task name</label>
+    <p class="help">What task is this?</p>
+    <input type="text" id="f-name" value="${escAttr(sop.name)}" placeholder="e.g., Packing an online order">
+    <div class="row2">
+      <div>
+        <label for="f-trigger">Trigger</label>
+        <p class="help">When does this happen? A time, a schedule, or an event.</p>
+        <input type="text" id="f-trigger" value="${escAttr(sop.trigger)}" placeholder="e.g., Order confirmation email received">
+      </div>
+      <div>
+        <label for="f-responsible">Responsible role</label>
+        <p class="help">Who normally does this — by role, not just by name.</p>
+        <input type="text" id="f-responsible" value="${escAttr(sop.responsible)}" placeholder="e.g., Kitchen lead on shift">
+      </div>
+    </div>
+    <label for="f-equipment">Materials or tools needed</label>
+    <p class="help">What should be on hand before starting?</p>
+    <textarea id="f-equipment" placeholder="Order slips&#10;Shipping labels&#10;Ice packs">${escAttr(sop.equipment)}</textarea>
+  </div>
+
+  <div class="section">
+    <h2>Steps</h2>
+    <p class="why">Write each step as a single action. If a step has two actions in it, split it into two steps — that's usually where a new hire loses the thread.</p>
+    <div class="rep-list" id="step-list"></div>
+    <button type="button" class="add-btn" id="add-step">+ Add step</button>
+  </div>
+
+  <div class="section">
+    <h2>Done condition</h2>
+    <p class="why">How do you know this task is fully, actually complete — not just "probably fine"?</p>
+    <input type="text" id="f-done" value="${escAttr(sop.doneCondition)}" placeholder="e.g., Order matches slip exactly and photo is saved to the order folder">
+  </div>
+
+  ${metaSectionHTML()}
+
+  <div class="actions no-print">
+    <button class="btn btn-ghost" onclick="setMode('home')">Cancel</button>
+    <button class="btn btn-primary" onclick="goReview()">Next: check it →</button>
+  </div>`;
+}
+
+function metaSectionHTML(){
+  return `
+  <div class="section">
+    <h2>Ownership</h2>
+    <p class="why">Every SOP should say who wrote it and when — so it's obvious when it's due for a refresh.</p>
+    <div class="row2">
+      <div>
+        <label for="f-owner">Written by</label>
+        <input type="text" id="f-owner" value="${escAttr(sop.owner)}" placeholder="e.g., Denise R.">
+      </div>
+      <div>
+        <label for="f-updated">Date</label>
+        <input type="date" id="f-updated" value="${sop.updated}">
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ---- repeatable ingredient / step rows ---- */
+function wireRepeatables(){
+  if(sop.type==="production"){
+    renderIngredients();
+    document.getElementById("add-ingredient").addEventListener("click", ()=>{
+      sop.ingredients.push({name:"",amount:"",unit:"",icon:"",groupBreak:false});
+      renderIngredients();
+    });
+  }
+  renderSteps();
+  document.getElementById("add-step").addEventListener("click", ()=>{
+    sop.steps.push(sop.type==="production" ? {text:"",checkpoint:""} : {text:""});
+    renderSteps();
+  });
+}
+
+function renderIngredients(){
+  const list = document.getElementById("ing-list");
+  const n = sop.ingredients.length;
+  list.innerHTML = sop.ingredients.map((ing,i)=>`
+    <div class="rep-item">
+      <button type="button" class="drag-handle" aria-label="Drag to reorder">⠿</button>
+      <span class="rep-num">${i+1}</span>
+      <div class="row-tools">
+        ${i>0 ? `<button type="button" class="mv" data-move-ing="${i}" data-dir="-1" aria-label="Move up">▲</button>`:""}
+        ${i<n-1 ? `<button type="button" class="mv" data-move-ing="${i}" data-dir="1" aria-label="Move down">▼</button>`:""}
+        ${n>1 ? `<button type="button" class="rep-remove" data-remove-ing="${i}">Remove</button>`:""}
+      </div>
+      <div class="row3">
+        <div><label>Ingredient</label><input type="text" data-ing="${i}" data-field="name" value="${escAttr(ing.name)}" placeholder="e.g., Roma tomatoes"></div>
+        <div><label>Amount</label><input type="text" data-ing="${i}" data-field="amount" value="${escAttr(ing.amount)}" placeholder="e.g., 12"></div>
+        <div><label>Unit</label><input type="text" data-ing="${i}" data-field="unit" value="${escAttr(ing.unit)}" placeholder="e.g., lb"></div>
+      </div>
+      <div class="icon-row">
+        <div>
+          <label>Icon on station card</label>
+          <select data-ing="${i}" data-field="icon">${iconSelectOptions(ing.icon)}</select>
+        </div>
+        <label class="inline-check"><input type="checkbox" data-ing="${i}" data-field="groupBreak" ${ing.groupBreak?"checked":""}> Start a new group after this item</label>
+      </div>
+    </div>`).join("");
+  list.querySelectorAll("[data-ing]").forEach(inp=>{
+    const handler = e=>{
+      /* a text input that was focused when a reorder re-rendered the list
+         fires a late 'change' with a stale index — ignore removed nodes */
+      if(!e.target.isConnected) return;
+      const idx = +e.target.dataset.ing, field = e.target.dataset.field;
+      sop.ingredients[idx][field] = e.target.type==="checkbox" ? e.target.checked : e.target.value;
+    };
+    inp.addEventListener("input", handler);
+    inp.addEventListener("change", handler);
+  });
+  list.querySelectorAll("[data-remove-ing]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      sop.ingredients.splice(+btn.dataset.removeIng,1);
+      renderIngredients();
+    });
+  });
+  list.querySelectorAll("[data-move-ing]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      moveInArr(sop.ingredients, +btn.dataset.moveIng, +btn.dataset.dir, renderIngredients);
+    });
+  });
+  enableReorder(list, sop.ingredients, renderIngredients);
+}
+
+function renderSteps(){
+  const list = document.getElementById("step-list");
+  const isProd = sop.type==="production";
+  const n = sop.steps.length;
+  list.innerHTML = sop.steps.map((st,i)=>`
+    <div class="rep-item">
+      <button type="button" class="drag-handle" aria-label="Drag to reorder">⠿</button>
+      <span class="rep-num">Step ${i+1}</span>
+      <div class="row-tools">
+        ${i>0 ? `<button type="button" class="mv" data-move-step="${i}" data-dir="-1" aria-label="Move up">▲</button>`:""}
+        ${i<n-1 ? `<button type="button" class="mv" data-move-step="${i}" data-dir="1" aria-label="Move down">▼</button>`:""}
+        ${n>1 ? `<button type="button" class="rep-remove" data-remove-step="${i}">Remove</button>`:""}
+      </div>
+      <label>What to do</label>
+      <textarea data-step="${i}" data-field="text" placeholder="${isProd? 'e.g., Roast tomatoes at 425°F until skins blister, ~18 min' : 'e.g., Match printed order slip to items in the bag'}">${escAttr(st.text)}</textarea>
+      ${isProd ? `
+      <label>Done-right checkpoint</label>
+      <p class="help">What does it look, smell, or feel like when this step is right?</p>
+      <textarea data-step="${i}" data-field="checkpoint" placeholder="e.g., Skins fully charred in spots, not just softened">${escAttr(st.checkpoint)}</textarea>` : ""}
+    </div>`).join("");
+  list.querySelectorAll("textarea[data-step]").forEach(inp=>{
+    inp.addEventListener("input", e=>{
+      if(!e.target.isConnected) return;
+      sop.steps[+e.target.dataset.step][e.target.dataset.field] = e.target.value;
+    });
+  });
+  list.querySelectorAll("[data-remove-step]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      sop.steps.splice(+btn.dataset.removeStep,1);
+      renderSteps();
+    });
+  });
+  list.querySelectorAll("[data-move-step]").forEach(btn=>{
+    btn.addEventListener("click", ()=>{
+      moveInArr(sop.steps, +btn.dataset.moveStep, +btn.dataset.dir, renderSteps);
+    });
+  });
+  enableReorder(list, sop.steps, renderSteps);
+}
+
+/* ===================== REORDERING ===================== */
+function moveInArr(arr, i, dir, rerender){
+  const j = i + dir;
+  if(j < 0 || j >= arr.length) return;
+  [arr[i], arr[j]] = [arr[j], arr[i]];
+  rerender();
+}
+
+/* Pointer-event drag reordering: works with mouse AND touch
+   (HTML5 drag-and-drop doesn't fire on touchscreens). The dragged
+   row is represented by a floating ghost clone; a gold line shows
+   the insertion point; the array is spliced on release and the
+   list re-rendered, which renumbers badges and rebinds inputs. */
+function enableReorder(listEl, arr, rerender){
+  listEl.querySelectorAll(".drag-handle").forEach(handle=>{
+    handle.addEventListener("pointerdown", e=>{
+      e.preventDefault();
+      const item = handle.closest(".rep-item");
+      const allItems = ()=>Array.from(listEl.querySelectorAll(".rep-item"));
+      const startIndex = allItems().indexOf(item);
+      const rect = item.getBoundingClientRect();
+      const offsetY = e.clientY - rect.top;
+
+      const ghost = item.cloneNode(true);
+      ghost.classList.add("drag-ghost");
+      ghost.style.width = rect.width + "px";
+      ghost.style.left = rect.left + "px";
+      ghost.style.top = rect.top + "px";
+      document.body.appendChild(ghost);
+      item.classList.add("drag-source");
+      document.body.classList.add("dragging");
+      handle.setPointerCapture(e.pointerId);
+
+      let insertAt = startIndex;
+
+      const clearMarks = ()=>allItems().forEach(el=>{el.classList.remove("drop-before");el.classList.remove("drop-after");});
+
+      const onMove = ev=>{
+        ghost.style.top = (ev.clientY - offsetY) + "px";
+        const others = allItems().filter(el=>el!==item);
+        /* insertAt = how many other rows sit fully above the pointer */
+        insertAt = 0;
+        others.forEach(el=>{
+          const r = el.getBoundingClientRect();
+          if(ev.clientY > r.top + r.height/2) insertAt++;
+        });
+        clearMarks();
+        if(others.length){
+          if(insertAt < others.length) others[insertAt].classList.add("drop-before");
+          else others[others.length-1].classList.add("drop-after");
+        }
+      };
+
+      const onUp = ()=>{
+        handle.removeEventListener("pointermove", onMove);
+        handle.removeEventListener("pointerup", onUp);
+        handle.removeEventListener("pointercancel", onUp);
+        ghost.remove();
+        item.classList.remove("drag-source");
+        document.body.classList.remove("dragging");
+        clearMarks();
+        /* a text field can still hold focus through the drag (pointerdown is
+           prevented); re-rendering would fire its pending 'change' at a stale
+           index. Blur it NOW so the change flushes at the correct old index. */
+        if(document.activeElement && listEl.contains(document.activeElement)){
+          document.activeElement.blur();
+        }
+        if(insertAt !== startIndex){
+          const [moved] = arr.splice(startIndex, 1);
+          arr.splice(insertAt, 0, moved);
+          rerender();
+        }
+      };
+
+      handle.addEventListener("pointermove", onMove);
+      handle.addEventListener("pointerup", onUp);
+      handle.addEventListener("pointercancel", onUp);
+    });
+  });
+}
+
+/* ===================== REVIEW / STRANGER TEST ===================== */
+function goReview(){
+  pullFormIntoSOP();
+  const el = document.getElementById("screen-review");
+  const checks = [
+    "Someone with zero experience here could follow this without texting me.",
+    "Every step that said \u201cuntil done\u201d or \u201cas needed\u201d now has a number, time, or visible sign instead.",
+    "A new hire would know what to gather before starting — not partway through.",
+    "I wrote down the mistake I see most often, not just the ideal case."
+  ];
+  el.innerHTML = `
+    <div class="section">
+      <h2>Quick check before you finish</h2>
+      <p class="why">This isn't a test — just a nudge. Check off what's true; anything unchecked is worth a second look before you print.</p>
+      <div class="checklist">
+        ${checks.map((c,i)=>`<label class="check-row"><input type="checkbox" id="chk-${i}"><span>${c}</span></label>`).join("")}
+      </div>
+    </div>
+    <div class="actions no-print">
+      <button class="btn btn-ghost" onclick="renderBuildForm(); setMode('build')">← Back to edit</button>
+      <button class="btn btn-primary" onclick="renderCard()">Generate the card →</button>
+    </div>`;
+  document.querySelectorAll(".modenav button").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll(".screen").forEach(s=>s.classList.remove("active"));
+  el.classList.add("active");
+}
+
+function pullFormIntoSOP(){
+  const g = id => document.getElementById(id);
+  sop.name = g("f-name") ? g("f-name").value : sop.name;
+  if(g("f-category")) sop.category = g("f-category").value;
+  if(g("f-yield")) sop.yield = g("f-yield").value;
+  if(g("f-equipment")) sop.equipment = g("f-equipment").value;
+  if(g("f-mistakes")) sop.commonMistakes = g("f-mistakes").value;
+  if(g("f-trigger")) sop.trigger = g("f-trigger").value;
+  if(g("f-responsible")) sop.responsible = g("f-responsible").value;
+  if(g("f-done")) sop.doneCondition = g("f-done").value;
+  if(g("f-owner")) sop.owner = g("f-owner").value;
+  if(g("f-updated")) sop.updated = g("f-updated").value;
+}
+
+/* ===================== CARD OUTPUT ===================== */
+let viewingBinderIndex = null;   // null = viewing the SOP just built; otherwise index into binderItems
+let cardMode = "full";           // "full" | "station" (station only offered for production SOPs)
+
+function renderCard(mode){
+  viewingBinderIndex = null;
+  cardMode = mode || "full";
+  paintCardScreen(sop);
+}
+
+function setCardMode(mode){
+  cardMode = mode;
+  paintCardScreen(viewingBinderIndex===null ? sop : binderItems[viewingBinderIndex].data);
+}
+
+/* Condensed-print heuristic: an SOP is "long" when its content volume
+   would overflow a single letter page at normal print sizing. Weights:
+   each ingredient ~1 unit, each step ~2 (steps wrap to multiple lines),
+   checkpoints add 1 each. Threshold tuned against rendered output. */
+function isLongSOP(d){
+  const units =
+    (d.ingredients?.length||0) * 1 +
+    (d.steps?.length||0) * 2 +
+    (d.steps?.filter(s=>s.checkpoint).length||0) * 1 +
+    (d.equipment ? Math.min(d.equipment.split("\n").length, 6) * 0.5 : 0) +
+    (d.commonMistakes ? 1.5 : 0);
+  return units > 18;
+}
+
+/* Small brand strip shown ONLY in print (site header is hidden there) */
+function printBrandHTML(){
+  return `<div class="print-brand"><span class="pb-name">Akron Food Works</span><span class="pb-sub">SOP &amp; Recipe Card · a program of The Well CDC</span></div>`;
+}
+
+function paintCardScreen(data){
+  const el = document.getElementById("screen-card");
+  const showToggle = data.type==="production";
+  const bodyHTML = cardMode==="station" ? stationCardInnerHTML(data) : cardInnerHTML(data);
+  const condensed = cardMode==="full" && isLongSOP(data) ? " condensed" : "";
+  const cardClass = cardMode==="station" ? "card-preview station" : "card-preview" + condensed;
+  const backAction = viewingBinderIndex===null ? "renderBuildForm(); setMode('build')" : "setMode('binder')";
+  const backLabel = viewingBinderIndex===null ? "← Edit" : "← Back to binder";
+  const extraActions = viewingBinderIndex===null
+    ? `<button class="btn btn-primary" onclick="downloadSOP()">Save to binder (.json)</button>
+       <button class="btn btn-primary" onclick="goBuild(sop.type)">Start another SOP</button>`
+    : "";
+  el.innerHTML = `
+    ${showToggle ? `
+    <div class="card-mode-toggle no-print">
+      <button class="mode-btn ${cardMode==='full'?'active':''}" onclick="setCardMode('full')">Full SOP</button>
+      <button class="mode-btn ${cardMode==='station'?'active':''}" onclick="setCardMode('station')">Station Card</button>
+    </div>` : ""}
+    <div class="${cardClass}" id="printable-card">${printBrandHTML()}${bodyHTML}</div>
+    <div class="actions no-print">
+      <button class="btn btn-ghost" onclick="${backAction}">${backLabel}</button>
+      <button class="btn btn-ghost" onclick="printCard()">Print card</button>
+      ${extraActions}
+    </div>`;
+  document.querySelectorAll(".modenav button").forEach(b=>b.classList.remove("active"));
+  document.querySelectorAll(".screen").forEach(s=>{s.classList.remove("active"); s.classList.remove("print-target");});
+  el.classList.add("active");
+  el.classList.add("print-target");
+}
+
+function cardInnerHTML(d){
+  const isProd = d.type==="production";
+  return `
+    <span class="kicker">${isProd? "Production SOP":"Operational SOP"}${d.category? " · "+esc(d.category):""}</span>
+    <h2>${esc(d.name)||"Untitled SOP"}</h2>
+    <div class="card-meta">
+      ${isProd? `<span>Yield: ${esc(d.yield)||"—"}</span>` : `<span>Trigger: ${esc(d.trigger)||"—"}</span><span>Responsible: ${esc(d.responsible)||"—"}</span>`}
+      <span>${d.version} · Updated ${esc(d.updated)}</span>
+      <span>Owner: ${esc(d.owner)||"—"}</span>
+    </div>
+    ${d.equipment? `<h4>${isProd?"Equipment":"Materials"}</h4><p style="font-size:.9rem;white-space:pre-line">${esc(d.equipment)}</p>`:""}
+    ${isProd && d.ingredients.length ? `<h4>Ingredients</h4><table class="ing-table">${d.ingredients.map(i=>`<tr><td>${esc(i.name)}</td><td>${esc(i.amount)} ${esc(i.unit)}</td></tr>`).join("")}</table>` : ""}
+    <h4>Steps</h4>
+    <ol>${d.steps.map(s=>`<li>${esc(s.text)}${isProd && s.checkpoint? `<span class="checkpoint">Done right: ${esc(s.checkpoint)}</span>`:""}</li>`).join("")}</ol>
+    ${isProd && d.commonMistakes? `<div class="mistake-box"><strong>Common mistake:</strong> ${esc(d.commonMistakes)}</div>`:""}
+    ${!isProd && d.doneCondition? `<div class="mistake-box"><strong>Done when:</strong> ${esc(d.doneCondition)}</div>`:""}
+  `;
+}
+
+function stationCardInnerHTML(d){
+  const ingRows = d.ingredients.map(ing=>{
+    const key = resolveIcon(ing);
+    const row = `
+      <div class="chain-row">
+        <div class="chain-badge">${ICONS[key]}</div>
+        <div class="chain-text">
+          <span class="chain-label">${esc(ing.name)||"Item"}</span>
+          <span class="chain-detail">${esc([ing.amount,ing.unit].filter(Boolean).join(" "))||"—"}</span>
+        </div>
+      </div>`;
+    return row + (ing.groupBreak ? `<div class="chain-divider">••••••••••••••••••••••••</div>` : "");
+  }).join("");
+
+  const stepRows = d.steps.map((st,i)=>`
+    <div class="chain-row">
+      <div class="chain-badge num">${i+1}</div>
+      <div class="chain-text">
+        <span class="chain-label">Step ${i+1}</span>
+        <span class="chain-detail">${esc(st.text)||"—"}</span>
+        ${st.checkpoint? `<span class="chain-note">Done right: ${esc(st.checkpoint)}</span>`:""}
+      </div>
+    </div>`).join("");
+
+  return `
+    <span class="kicker station-kicker">Station Card${d.category? " · "+esc(d.category):""}</span>
+    <h2 class="station-title">${esc(d.name)||"Untitled SOP"}</h2>
+    <div class="card-meta station-meta">
+      <span>Yield: ${esc(d.yield)||"—"}</span>
+      <span>${d.version} · Updated ${esc(d.updated)}</span>
+      <span>Owner: ${esc(d.owner)||"—"}</span>
+    </div>
+    ${d.ingredients.length? `<div class="chain">${ingRows}</div>`:""}
+    ${d.steps.length? `<h4 class="station-subhead">Steps</h4><div class="chain">${stepRows}</div>`:""}
+    ${d.commonMistakes? `<div class="mistake-box station-mistake"><span class="chain-badge warning-badge">${ICONS.warning}</span><div><strong>Watch for</strong><br>${esc(d.commonMistakes)}</div></div>`:""}
+  `;
+}
+
+function printCard(){ window.print(); }
+
+function sopKey(d){ return JSON.stringify(d); }
+function addToBinder(data, filename){
+  const key = sopKey(data);
+  if(binderItems.some(it=>sopKey(it.data)===key)) return false;  // exact duplicate — skip
+  binderItems.push({data, filename});
+  return true;
+}
+
+function downloadSOP(){
+  pullFormIntoSOP();
+  const blob = new Blob([JSON.stringify(sop,null,2)], {type:"application/json"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const safe = (sop.name||"sop").toLowerCase().replace(/[^a-z0-9]+/g,"-").replace(/(^-|-$)/g,"");
+  a.download = `afw-sop-${safe||"untitled"}.json`;
+  document.body.appendChild(a); a.click(); a.remove();
+  addToBinder(JSON.parse(JSON.stringify(sop)), a.download);
+  /* brief visual confirmation on the button */
+  const btn = document.querySelector("#screen-card .btn-primary");
+  if(btn){ const orig = btn.textContent; btn.textContent = "Saved ✓ (file downloaded)"; setTimeout(()=>{btn.textContent = orig;}, 2200); }
+}
+
+/* ===================== BINDER ===================== */
+function renderBinder(){
+  const el = document.getElementById("screen-binder");
+  el.innerHTML = `
+    <div class="section no-print">
+      <h2>Import SOP files</h2>
+      <p class="why">Drop in any .json files saved from this tool — from any session, any computer — to build your index.</p>
+      <label for="import-input" class="file-btn">Choose files…</label>
+      <input type="file" id="import-input" accept=".json" multiple style="display:none">
+    </div>
+    <div class="binder-toolbar no-print">
+      <input type="text" id="binder-search" placeholder="Search by name, category, owner…">
+      <button class="btn btn-ghost" onclick="printAllBinder()">Print all</button>
+    </div>
+    <div id="binder-table-wrap"></div>
+  `;
+  document.getElementById("import-input").addEventListener("change", handleImport);
+  document.getElementById("binder-search").addEventListener("input", e=>renderBinderTable(e.target.value));
+  renderBinderTable("");
+}
+
+function handleImport(e){
+  const files = Array.from(e.target.files);
+  let loaded = 0;
+  files.forEach(f=>{
+    const reader = new FileReader();
+    reader.onload = ()=>{
+      try{
+        const data = JSON.parse(reader.result);
+        if(data.schema==="afw-sop-v1"){
+          addToBinder(data, f.name);
+        }
+      }catch(err){ /* skip unreadable file */ }
+      loaded++;
+      if(loaded===files.length) renderBinderTable(document.getElementById("binder-search").value);
+    };
+    reader.readAsText(f);
+  });
+}
+
+function sortBinder(key){
+  if(sortKey===key){ sortDir = sortDir==="asc"?"desc":"asc"; } else { sortKey=key; sortDir="asc"; }
+  renderBinderTable(document.getElementById("binder-search")?.value||"");
+}
+
+function renderBinderTable(query){
+  const wrap = document.getElementById("binder-table-wrap");
+  let items = binderItems.filter(it=>{
+    if(!query) return true;
+    const q = query.toLowerCase();
+    return [it.data.name,it.data.category,it.data.owner,it.data.trigger].join(" ").toLowerCase().includes(q);
+  });
+  items.sort((a,b)=>{
+    const av = (a.data[sortKey]||"").toString().toLowerCase();
+    const bv = (b.data[sortKey]||"").toString().toLowerCase();
+    return (av<bv?-1:av>bv?1:0) * (sortDir==="asc"?1:-1);
+  });
+  if(binderItems.length===0){
+    wrap.innerHTML = `<div class="empty-note">No SOPs loaded yet. Import saved .json files above, or <a href="#" onclick="setMode('build');goBuild('production');return false;" style="color:var(--amber);font-weight:700">start a new one</a>.</div>`;
+    return;
+  }
+  wrap.innerHTML = `
+    <table class="binder">
+      <thead><tr>
+        <th onclick="sortBinder('name')">Name</th>
+        <th onclick="sortBinder('type')">Type</th>
+        <th onclick="sortBinder('category')">Category / Trigger</th>
+        <th onclick="sortBinder('owner')">Owner</th>
+        <th onclick="sortBinder('updated')">Updated</th>
+      </tr></thead>
+      <tbody>
+        ${items.map((it,i)=>`
+        <tr class="datarow" onclick="viewBinderItem(${binderItems.indexOf(it)})">
+          <td>${esc(it.data.name)||"Untitled"}</td>
+          <td><span class="type-pill ${it.data.type}">${it.data.type==="production"?"Production":"Operational"}</span></td>
+          <td>${esc(it.data.category||it.data.trigger||"—")}</td>
+          <td>${esc(it.data.owner)||"—"}</td>
+          <td>${esc(it.data.updated)||"—"}</td>
+        </tr>`).join("")}
+      </tbody>
+    </table>`;
+}
+
+function viewBinderItem(idx){
+  viewingBinderIndex = idx;
+  cardMode = "full";
+  paintCardScreen(binderItems[idx].data);
+}
+
+function printAllBinder(){
+  if(binderItems.length===0) return;
+  const target = document.getElementById("binder-full-print");
+  target.innerHTML = binderItems.map(it=>{
+    const cond = isLongSOP(it.data) ? " condensed" : "";
+    return `<div class="card-preview print-page${cond}">${printBrandHTML()}${cardInnerHTML(it.data)}</div>`;
+  }).join("");
+  document.body.classList.add("printing-all");
+  const cleanup = ()=>{
+    document.body.classList.remove("printing-all");
+    target.innerHTML = "";
+    window.removeEventListener("afterprint", cleanup);
+  };
+  window.addEventListener("afterprint", cleanup);
+  window.print();
+  /* fallback for environments that never fire afterprint */
+  setTimeout(cleanup, 2000);
+}
+
+/* ===================== utils ===================== */
+/* escAttr: for form input values / textarea contents — escapes quotes,
+   PRESERVES newlines (textareas need real newlines, not <br>). */
+function escAttr(s){
+  return (s||"").toString()
+    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+    .replace(/"/g,"&quot;");
+}
+/* escHTML: for rendered display (cards, binder table) — also converts
+   newlines to <br> for prose fields. */
+function escHTML(s){
+  return escAttr(s).replace(/\n/g,"<br>");
+}
+/* legacy alias — display contexts */
+const esc = escHTML;
+</script>
+</body>
+</html>
