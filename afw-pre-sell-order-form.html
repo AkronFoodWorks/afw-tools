@@ -20,9 +20,11 @@
 
   · PURPOSE: the fillable log for Roadmap Week 1–2 — "pre-sell
     first, then book the kitchen." Members log each order as
-    they take it (name, item, qty, paid status, amount), and
-    the tool tracks progress against the same break-even goal
-    math used in the First 30 Days Roadmap:
+    a card (customer, contact, paid status, amount) holding
+    one or more items (name + qty) — one customer buying three
+    things is one order, not three. The tool tracks progress
+    against the same break-even goal math used in the First
+    30 Days Roadmap:
         margin per order = price − cost
         orders needed     = kitchen session cost ÷ margin
     Keeping that formula identical here (not re-derived) is
@@ -129,33 +131,61 @@
   .bar-track{margin-top:10px;height:8px;border-radius:99px;background:rgba(35,55,43,.12);overflow:hidden}
   .bar-fill{height:100%;background:var(--green);border-radius:99px;transition:width .2s}
 
-  /* order table */
-  .tbl-wrap{overflow-x:auto;margin-top:6px}
-  table{width:100%;border-collapse:collapse;min-width:760px}
-  thead th{
-    text-align:left;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;
-    color:var(--ink-soft);font-weight:700;padding:0 8px 8px;border-bottom:2px solid var(--line);
+  /* order cards — one card per customer, with one or more items nested inside */
+  .order-list{display:flex;flex-direction:column;gap:14px;margin-top:6px}
+  .order-card{
+    border:1px solid var(--line);border-radius:12px;background:var(--cream);
+    padding:14px 16px 16px;page-break-inside:avoid;break-inside:avoid;
   }
-  tbody td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
-  tbody tr:last-child td{border-bottom:none}
-  tbody input,tbody select{
-    width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:7px;
+  .order-num{
+    display:flex;justify-content:space-between;align-items:center;
+    font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--ink-faint);margin-bottom:10px;
+  }
+  .order-head{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  .order-head .field label,.order-foot .field label{
+    display:block;font-size:.72rem;font-weight:700;color:var(--green-deep);margin-bottom:4px;
+  }
+  .order-head input,.order-foot input,.order-foot select{
+    width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
     background:var(--paper);font-size:.9rem;
   }
-  tbody input[type=number]{width:90px}
-  td.qty input{width:64px}
-  td.rm{width:36px;text-align:center}
-  .rm-btn{
-    border:none;background:transparent;color:var(--amber);font-weight:700;font-size:1.1rem;
-    line-height:1;padding:4px 8px;border-radius:8px;
+
+  .items-block{margin-top:12px;padding-top:12px;border-top:1px dashed var(--line)}
+  .items-label{
+    font-size:.72rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-soft);margin-bottom:7px;
   }
-  .rm-btn:hover{background:var(--warn-bg)}
+  .item-row{display:grid;grid-template-columns:1fr 78px 30px;gap:8px;margin-bottom:6px;align-items:center}
+  .item-row input{padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);font-size:.88rem}
+  .rm-item-btn{
+    border:none;background:transparent;color:var(--amber);font-weight:700;font-size:1rem;
+    line-height:1;padding:5px;border-radius:6px;
+  }
+  .rm-item-btn:hover{background:var(--warn-bg)}
+  .add-item-btn{
+    margin-top:2px;padding:5px 11px;border-radius:7px;border:1.5px dashed var(--green);
+    background:transparent;color:var(--green);font-size:.78rem;font-weight:700;
+  }
+  .add-item-btn:hover{background:var(--good-bg)}
+
+  .order-foot{
+    margin-top:12px;padding-top:12px;border-top:1px dashed var(--line);
+    display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;
+  }
+
+  .rm-order-btn{
+    border:none;background:transparent;color:var(--amber);font-weight:700;font-size:.8rem;
+    padding:4px 9px;border-radius:7px;
+  }
+  .rm-order-btn:hover{background:var(--warn-bg)}
+
   .paid-unpaid{color:var(--ink-faint)}
   .paid-deposit{color:var(--amber)}
   .paid-full{color:var(--green)}
 
   .add-row{
-    margin-top:12px;padding:9px 16px;border-radius:9px;border:1.5px dashed var(--green);
+    margin-top:14px;padding:9px 16px;border-radius:9px;border:1.5px dashed var(--green);
     background:transparent;color:var(--green);font-weight:700;font-size:.88rem;
   }
   .add-row:hover{background:var(--good-bg)}
@@ -211,7 +241,7 @@
     <div class="settings-grid">
       <div class="field">
         <label for="offerName">What you're selling</label>
-        <input type="text" id="offerName" placeholder="e.g., Jollof chicken plates">
+        <input type="text" id="offerName" placeholder="e.g., Jollof chicken">
       </div>
       <div class="field">
         <label for="pickupDay">Pickup day</label>
@@ -240,31 +270,15 @@
 
   <section class="card">
     <h2>Order log</h2>
-    <p class="sub">One row per customer order. A row only counts toward your goal once it's marked Deposit or Paid in full.</p>
-    <div class="tbl-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>Customer</th>
-            <th>Contact</th>
-            <th>Item</th>
-            <th>Qty</th>
-            <th>Paid?</th>
-            <th>Amount ($)</th>
-            <th>Notes</th>
-            <th class="no-print"></th>
-          </tr>
-        </thead>
-        <tbody id="orderRows"></tbody>
-      </table>
-    </div>
+    <p class="sub">One card per customer order — add every item they bought underneath it. An order only counts toward your goal once it's marked Deposit or Paid in full.</p>
+    <div class="order-list" id="orderList"></div>
     <button type="button" class="add-row no-print" id="btnAddRow">+ Add order</button>
 
     <div class="summary">
       <div class="stat"><div class="num" id="statCommitted">0</div><div class="lbl">Committed orders</div></div>
       <div class="stat"><div class="num" id="statCollected">$0</div><div class="lbl">Collected so far</div></div>
       <div class="stat"><div class="num" id="statRemaining">—</div><div class="lbl">Orders still needed</div></div>
-      <div class="stat"><div class="num" id="statTotalRows">0</div><div class="lbl">Total rows logged</div></div>
+      <div class="stat"><div class="num" id="statTotalRows">0</div><div class="lbl">Total orders logged</div></div>
     </div>
   </section>
 
@@ -284,13 +298,22 @@
 
 <script>
   // ---------- state ----------
+  // One order (one customer) can hold several items — items is always a
+  // non-empty array. Removing the last item line just resets it to blank
+  // rather than leaving the order with zero items.
   const SETTINGS_FIELDS = ['offerName','pickupDay','price','cost','kitchenCost'];
   let orders = [];
-  let seq = 0;
+  let orderSeq = 0;
+  let itemSeq = 0;
+
+  function blankItem(){
+    itemSeq += 1;
+    return { id:'i'+itemSeq, name:'', qty:1 };
+  }
 
   function blankOrder(){
-    seq += 1;
-    return { id:'o'+seq, name:'', contact:'', item:'', qty:1, paid:'unpaid', amount:null, notes:'' };
+    orderSeq += 1;
+    return { id:'o'+orderSeq, name:'', contact:'', paid:'unpaid', amount:null, notes:'', items:[blankItem()] };
   }
 
   function moneyFmt(n){
@@ -365,52 +388,88 @@
     return ordersNeeded;
   }
 
-  // ---------- order rows ----------
-  function rowHtml(o){
-    return `
-      <tr data-id="${o.id}">
-        <td><input type="text" class="f-name" value="${escAttr(o.name)}" placeholder="Customer name"></td>
-        <td><input type="text" class="f-contact" value="${escAttr(o.contact)}" placeholder="Phone or text"></td>
-        <td><input type="text" class="f-item" value="${escAttr(o.item)}" placeholder="Item"></td>
-        <td class="qty"><input type="number" class="f-qty" min="1" value="${o.qty ?? 1}"></td>
-        <td>
-          <select class="f-paid paid-${o.paid}">
-            <option value="unpaid" ${o.paid==='unpaid'?'selected':''}>Unpaid</option>
-            <option value="deposit" ${o.paid==='deposit'?'selected':''}>Deposit</option>
-            <option value="full" ${o.paid==='full'?'selected':''}>Paid in full</option>
-          </select>
-        </td>
-        <td><input type="number" class="f-amount" min="0" step="0.01" value="${o.amount ?? ''}" placeholder="0.00"></td>
-        <td><input type="text" class="f-notes" value="${escAttr(o.notes)}" placeholder="Optional"></td>
-        <td class="rm no-print"><button type="button" class="rm-btn" title="Remove">×</button></td>
-      </tr>`;
-  }
-
+  // ---------- order cards ----------
   function escAttr(v){
     return (v ?? '').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
   }
 
-  function renderRows(){
-    const tbody = document.getElementById('orderRows');
-    tbody.innerHTML = orders.map(rowHtml).join('');
-    tbody.querySelectorAll('tr').forEach(tr => {
-      const id = tr.dataset.id;
+  function itemRowHtml(item){
+    return `
+      <div class="item-row" data-item="${item.id}">
+        <input type="text" class="f-item-name" value="${escAttr(item.name)}" placeholder="Item">
+        <input type="number" class="f-item-qty" min="1" value="${item.qty ?? 1}">
+        <button type="button" class="rm-item-btn no-print" title="Remove item">×</button>
+      </div>`;
+  }
+
+  function orderCardHtml(o, idx){
+    return `
+      <div class="order-card" data-id="${o.id}">
+        <div class="order-num">
+          <span>Order ${idx + 1}</span>
+          <button type="button" class="rm-order-btn no-print" title="Remove this whole order">Remove order</button>
+        </div>
+        <div class="order-head">
+          <div class="field"><label>Customer</label><input type="text" class="f-name" value="${escAttr(o.name)}" placeholder="Customer name"></div>
+          <div class="field"><label>Contact</label><input type="text" class="f-contact" value="${escAttr(o.contact)}" placeholder="Phone or text"></div>
+        </div>
+        <div class="items-block">
+          <div class="items-label">Items in this order</div>
+          <div class="items-rows">${o.items.map(itemRowHtml).join('')}</div>
+          <button type="button" class="add-item-btn no-print">+ Add item</button>
+        </div>
+        <div class="order-foot">
+          <div class="field">
+            <label>Paid?</label>
+            <select class="f-paid paid-${o.paid}">
+              <option value="unpaid" ${o.paid==='unpaid'?'selected':''}>Unpaid</option>
+              <option value="deposit" ${o.paid==='deposit'?'selected':''}>Deposit</option>
+              <option value="full" ${o.paid==='full'?'selected':''}>Paid in full</option>
+            </select>
+          </div>
+          <div class="field"><label>Amount ($)</label><input type="number" class="f-amount" min="0" step="0.01" value="${o.amount ?? ''}" placeholder="0.00"></div>
+          <div class="field"><label>Notes</label><input type="text" class="f-notes" value="${escAttr(o.notes)}" placeholder="Optional"></div>
+        </div>
+      </div>`;
+  }
+
+  function renderOrders(){
+    const list = document.getElementById('orderList');
+    list.innerHTML = orders.map(orderCardHtml).join('');
+    list.querySelectorAll('.order-card').forEach(card => {
+      const id = card.dataset.id;
       const o = orders.find(x => x.id === id);
-      tr.querySelector('.f-name').addEventListener('input', e => { o.name = e.target.value; });
-      tr.querySelector('.f-contact').addEventListener('input', e => { o.contact = e.target.value; });
-      tr.querySelector('.f-item').addEventListener('input', e => { o.item = e.target.value; });
-      tr.querySelector('.f-qty').addEventListener('input', e => { o.qty = Number(e.target.value) || 1; });
-      tr.querySelector('.f-amount').addEventListener('input', e => { o.amount = e.target.value === '' ? null : Number(e.target.value); renderSummary(); });
-      tr.querySelector('.f-notes').addEventListener('input', e => { o.notes = e.target.value; });
-      tr.querySelector('.f-paid').addEventListener('change', e => {
+
+      card.querySelector('.f-name').addEventListener('input', e => { o.name = e.target.value; });
+      card.querySelector('.f-contact').addEventListener('input', e => { o.contact = e.target.value; });
+      card.querySelector('.f-amount').addEventListener('input', e => { o.amount = e.target.value === '' ? null : Number(e.target.value); renderSummary(); });
+      card.querySelector('.f-notes').addEventListener('input', e => { o.notes = e.target.value; });
+      card.querySelector('.f-paid').addEventListener('change', e => {
         o.paid = e.target.value;
         e.target.className = 'f-paid paid-' + o.paid;
         renderSummary();
       });
-      tr.querySelector('.rm-btn').addEventListener('click', () => {
+      card.querySelector('.rm-order-btn').addEventListener('click', () => {
         orders = orders.filter(x => x.id !== id);
-        renderRows();
+        renderOrders();
         renderSummary();
+      });
+      card.querySelector('.add-item-btn').addEventListener('click', () => {
+        o.items.push(blankItem());
+        renderOrders();
+        renderSummary();
+      });
+      card.querySelectorAll('.item-row').forEach(row => {
+        const itemId = row.dataset.item;
+        const item = o.items.find(it => it.id === itemId);
+        row.querySelector('.f-item-name').addEventListener('input', e => { item.name = e.target.value; });
+        row.querySelector('.f-item-qty').addEventListener('input', e => { item.qty = Number(e.target.value) || 1; });
+        row.querySelector('.rm-item-btn').addEventListener('click', () => {
+          o.items = o.items.filter(it => it.id !== itemId);
+          if (o.items.length === 0) o.items.push(blankItem()); // an order always keeps at least one item line
+          renderOrders();
+          renderSummary();
+        });
       });
     });
   }
@@ -424,22 +483,34 @@
     computeGoal();
   }
 
-  function addRow(){
+  function addOrder(){
     orders.push(blankOrder());
-    renderRows();
+    renderOrders();
     renderSummary();
   }
 
   // ---------- export / import (JSON is the source of truth — no cloud, no browser storage) ----------
   function collectState(){
-    return { _tool:'pre-sell-order-form', fileVersion:1, settings:getSettings(), orders };
+    return { _tool:'pre-sell-order-form', fileVersion:2, settings:getSettings(), orders };
   }
 
   function applyState(data){
     if (!data) return;
     applySettings(data.settings);
-    orders = Array.isArray(data.orders) ? data.orders.map(o => ({ ...blankOrder(), ...o })) : [];
-    renderRows();
+    const raw = Array.isArray(data.orders) ? data.orders : [];
+    orders = raw.map(o => {
+      const merged = { ...blankOrder(), ...o };
+      // migrate fileVersion-1 files (single item/qty per order, no items array) —
+      // check the RAW import for a usable items array, not `merged`, since merged
+      // always has one already (from blankOrder()'s defaults).
+      if (!Array.isArray(o.items) || o.items.length === 0) {
+        merged.items = [{ ...blankItem(), name: o.item || '', qty: o.qty || 1 }];
+      }
+      delete merged.item;
+      delete merged.qty;
+      return merged;
+    });
+    renderOrders();
     renderSummary();
   }
 
@@ -472,15 +543,15 @@
   });
 
   document.getElementById('btnPrint').addEventListener('click', () => window.print());
-  document.getElementById('btnAddRow').addEventListener('click', addRow);
+  document.getElementById('btnAddRow').addEventListener('click', addOrder);
 
   SETTINGS_FIELDS.forEach(id => {
     document.getElementById(id).addEventListener('input', renderSummary);
   });
 
   // ---------- init ----------
-  orders = [blankOrder(), blankOrder(), blankOrder()];
-  renderRows();
+  orders = [blankOrder(), blankOrder()];
+  renderOrders();
   renderSummary();
 </script>
 </body>
