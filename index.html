@@ -3,89 +3,468 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Akron Food Works — Tools</title>
+<title>Akron Food Works — Entrepreneur Tool Hub</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,900&family=Hanken+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  ============================================================
+  AKRON FOOD WORKS — ENTREPRENEUR TOOL HUB
+  ============================================================
+  BUILD NOTES (staff / maintainer)
+
+  · Design system: matches the Hours-That-Pay Calculator and
+    journey-map family — Fraunces (display) + Hanken Grotesk
+    (body); cream / forest green / amber / gold palette.
+
+  · HOW LINKS WORK: place this file in the SAME FOLDER as the
+    tool files (or a hosted directory). Each card's link is a
+    relative href in the TOOLS array below.
+
+  · FILE NAMING CONVENTION (use for ALL future tools):
+        afw-<short-kebab-name>.<ext>
+    e.g.  afw-sop-builder.html
+          afw-hours-that-pay.html
+          afw-food-cost-pricing.html
+          afw-readiness-checkin.pdf
+    Rules: all lowercase, hyphens only (no spaces, no underscores,
+    no capitals), always the afw- prefix, no dates or version
+    numbers in the filename (git tracks history; a changing
+    filename breaks every existing link and printed QR code).
+    WHY LOWERCASE MATTERS: GitHub Pages and most Linux hosts are
+    case-sensitive, so Tool.html and tool.html are different URLs.
+    Sticking to one case eliminates a whole class of dead links.
+
+  · TOOL STATUS values:
+      "available" — built and linked; card shows an Open button
+      "pending"   — built but the real filename isn't confirmed
+                    yet; card shows with a "Link pending" flag and
+                    no dead button. Set href + flip to "available"
+                    once the file is in the repo.
+      "soon"      — not built yet; muted/dashed card, no button
+
+  · HOW TO ADD A TOOL: scroll to  const TOOLS = [ ... ]  and
+    append one object:
+      {
+        name:   "Tool name",
+        desc:   "One plain sentence on what it does for them.",
+        phases: ["explore","readiness","create","incubate","elevate"], // any that apply
+        format: "Interactive tool" | "Guide" | "Worksheet" | "Templates",
+        status: "available" | "pending" | "soon",
+        href:   "./afw-tool-name.html"   // omit for "soon"
+      }
+    The card, its phase tags, and the filter behavior are all
+    generated automatically. Nothing else needs editing.
+
+  · LOGO SLOT: the header uses a typographic lockup. To use the
+    official AFW horizontal logo instead, replace the contents
+    of  <div class="brand">  with an <img> using the base64
+    data-URI from the one-pager file.
+
+  · No external dependencies beyond Google Fonts. Works offline
+    except for fonts (falls back to Georgia / system sans).
+  ============================================================
+-->
 <style>
   :root{
-    --cream:#FBF6EC; --paper:#FFFDF8; --ink:#23372B; --ink-soft:#4A5A4E;
-    --green:#2C5440; --green-deep:#1E3A2D; --amber:#C8612E; --gold:#D9A441;
+    --cream:#FBF6EC;
+    --paper:#FFFDF8;
+    --ink:#23372B;
+    --ink-soft:#4A5A4E;
+    --ink-faint:#7C897F;
+    --green:#2C5440;
+    --green-deep:#1E3A2D;
+    --amber:#C8612E;
+    --amber-soft:#E89B5A;
+    --gold:#D9A441;
     --line:#E2D9C6;
+    --shadow:0 18px 40px -22px rgba(30,58,45,.45);
+    --display:'Fraunces',Georgia,serif;
+    --body:'Hanken Grotesk',system-ui,sans-serif;
   }
   *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%;scroll-behavior:smooth}
+  @media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}}
   body{
-    font-family:'Hanken Grotesk',system-ui,sans-serif;color:var(--ink);
+    font-family:var(--body);
+    color:var(--ink);
     background:
       radial-gradient(1200px 600px at 85% -8%, rgba(217,164,65,.16), transparent 60%),
       radial-gradient(900px 500px at -10% 110%, rgba(44,84,64,.12), transparent 55%),
       var(--cream);
-    min-height:100vh;line-height:1.5;
-    padding:clamp(24px,6vw,72px) clamp(16px,4vw,24px) 64px;
+    min-height:100vh;
+    line-height:1.55;
+    padding:0 20px 72px;
   }
-  .wrap{max-width:680px;margin:0 auto}
+  .wrap{max-width:1020px;margin:0 auto}
+
+  /* ---------- header ---------- */
+  header{padding:40px 0 8px}
+  .brand{
+    display:flex;align-items:baseline;gap:12px;flex-wrap:wrap;
+  }
+  .brand-name{
+    font-family:var(--display);font-weight:600;font-size:1.15rem;
+    letter-spacing:.01em;color:var(--green-deep);
+  }
+  .brand-sub{
+    font-size:.72rem;letter-spacing:.18em;text-transform:uppercase;
+    color:var(--ink-soft);font-weight:600;
+  }
+  .hero{margin-top:34px;max-width:34ch}
   .eyebrow{
-    font-size:.72rem;letter-spacing:.32em;text-transform:uppercase;font-weight:600;
-    color:var(--amber);margin-bottom:14px;display:flex;align-items:center;gap:10px;
+    font-size:.74rem;letter-spacing:.22em;text-transform:uppercase;
+    color:var(--amber);font-weight:700;margin-bottom:14px;
   }
-  .eyebrow::before{content:"";width:26px;height:2px;background:var(--amber)}
   h1{
-    font-family:'Fraunces',Georgia,serif;font-weight:900;
-    font-size:clamp(2.2rem,7vw,3.2rem);line-height:1;letter-spacing:-.02em;
-    margin-bottom:12px;
+    font-family:var(--display);font-weight:500;
+    font-size:clamp(2.1rem,6vw,3.4rem);line-height:1.03;
+    letter-spacing:-.015em;
   }
-  .lede{color:var(--ink-soft);margin-bottom:36px;max-width:52ch}
-  .tool{
-    display:block;text-decoration:none;color:inherit;background:var(--paper);
-    border:1px solid var(--line);border-radius:14px;padding:18px 20px;margin-bottom:12px;
-    transition:transform .12s ease, box-shadow .12s ease;
+  h1 em{font-style:italic;color:var(--green)}
+  .hero p{
+    margin-top:16px;font-size:1.04rem;color:var(--ink-soft);max-width:56ch;
   }
-  .tool:hover{transform:translateY(-2px);box-shadow:0 14px 30px -18px rgba(30,58,45,.4)}
-  .tool h2{font-family:'Fraunces',Georgia,serif;font-weight:600;font-size:1.15rem;margin-bottom:2px}
-  .tool p{font-size:.92rem;color:var(--ink-soft)}
-  .soon{opacity:.55;pointer-events:none}
-  .soon h2::after{content:" · coming soon";font-family:'Hanken Grotesk',sans-serif;
-    font-size:.7rem;letter-spacing:.14em;text-transform:uppercase;color:var(--amber)}
-  footer{margin-top:44px;font-size:.85rem;color:var(--ink-soft)}
+  .hero p em{font-family:var(--display);font-style:italic;color:var(--green-deep)}
+
+  /* ---------- phase picker ---------- */
+  .picker{margin-top:40px}
+  .picker-label{
+    font-size:.74rem;letter-spacing:.2em;text-transform:uppercase;
+    font-weight:700;color:var(--green-deep);margin-bottom:12px;
+  }
+  .chips{display:flex;flex-wrap:wrap;gap:9px}
+  .chip{
+    font-family:var(--body);font-size:.9rem;font-weight:600;
+    color:var(--green-deep);
+    background:var(--paper);
+    border:1.5px solid var(--line);
+    border-radius:999px;
+    padding:9px 16px;cursor:pointer;
+    transition:border-color .15s,background .15s,color .15s,box-shadow .15s;
+    display:inline-flex;align-items:baseline;gap:8px;
+  }
+  .chip small{
+    font-size:.68rem;letter-spacing:.12em;text-transform:uppercase;
+    font-weight:700;color:var(--amber);opacity:.85;
+  }
+  .chip:hover{border-color:var(--gold)}
+  .chip:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  .chip[aria-pressed="true"]{
+    background:var(--green);border-color:var(--green);color:var(--cream);
+    box-shadow:var(--shadow);
+  }
+  .chip[aria-pressed="true"] small{color:var(--gold)}
+
+  /* ---------- guidance card (signature) ---------- */
+  .guide-card{
+    margin-top:22px;
+    background:linear-gradient(140deg,var(--green-deep),var(--green) 78%);
+    color:var(--cream);
+    border-radius:20px;
+    padding:22px 26px;
+    box-shadow:var(--shadow), inset 0 0 0 1px rgba(217,164,65,.28);
+    position:relative;overflow:hidden;
+  }
+  .guide-card::after{
+    content:"";position:absolute;inset:auto -40px -60px auto;
+    width:220px;height:220px;border-radius:50%;
+    background:radial-gradient(circle, rgba(217,164,65,.32), transparent 70%);
+    pointer-events:none;
+  }
+  .guide-card h2{
+    font-family:var(--display);font-weight:500;font-style:italic;
+    font-size:1.25rem;letter-spacing:.005em;
+  }
+  .guide-card p{
+    margin-top:6px;font-size:.95rem;color:rgba(251,246,236,.85);max-width:64ch;
+  }
+
+  /* ---------- grid ---------- */
+  .grid{
+    margin-top:30px;
+    display:grid;grid-template-columns:repeat(auto-fill,minmax(290px,1fr));
+    gap:18px;
+  }
+  .card{
+    background:var(--paper);
+    border:1px solid var(--line);
+    border-radius:18px;
+    padding:22px 22px 20px;
+    display:flex;flex-direction:column;gap:12px;
+    transition:transform .18s ease, box-shadow .18s ease, border-color .18s;
+    position:relative;
+  }
+  .card[data-visible="false"]{display:none}
+  .card:hover{transform:translateY(-3px);box-shadow:var(--shadow);border-color:var(--gold)}
+  @media (prefers-reduced-motion:reduce){.card:hover{transform:none}}
+  .card-top{display:flex;align-items:center;justify-content:space-between;gap:10px}
+  .format{
+    font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;
+    font-weight:700;color:var(--amber);
+    background:rgba(200,97,46,.09);
+    border:1px solid rgba(200,97,46,.25);
+    padding:4px 10px;border-radius:999px;white-space:nowrap;
+  }
+  .soon-flag{
+    font-size:.66rem;letter-spacing:.14em;text-transform:uppercase;
+    font-weight:700;color:var(--ink-soft);
+    background:var(--cream);
+    border:1px dashed var(--line);
+    padding:4px 10px;border-radius:999px;white-space:nowrap;
+  }
+  .card h3{
+    font-family:var(--display);font-weight:600;font-size:1.28rem;
+    line-height:1.15;letter-spacing:-.005em;color:var(--green-deep);
+  }
+  .card p{font-size:.93rem;color:var(--ink-soft);flex:1}
+  .tags{display:flex;flex-wrap:wrap;gap:6px}
+  .tag{
+    font-size:.7rem;font-weight:700;letter-spacing:.06em;
+    color:var(--green);background:rgba(44,84,64,.08);
+    border-radius:6px;padding:3px 8px;
+  }
+  .open{
+    align-self:flex-start;
+    font-weight:700;font-size:.92rem;color:var(--paper);
+    background:var(--green);
+    border:none;border-radius:10px;
+    padding:10px 18px;text-decoration:none;cursor:pointer;
+    transition:background .15s;
+    display:inline-flex;align-items:center;gap:8px;
+  }
+  .open::after{content:"→";font-weight:400}
+  .open:hover{background:var(--green-deep)}
+  .open:focus-visible{outline:3px solid var(--gold);outline-offset:2px}
+  .card.is-soon{background:var(--cream);border-style:dashed}
+  .card.is-soon h3{color:var(--ink-soft)}
+  .card.is-soon .open{display:none}
+  .card.is-pending{border-style:dashed}
+  .pending-note{font-size:.8rem;color:var(--ink-faint);font-style:italic;align-self:flex-start}
+
+  .empty{
+    display:none;margin-top:26px;
+    background:var(--paper);border:1px dashed var(--line);border-radius:16px;
+    padding:26px;color:var(--ink-soft);font-size:.95rem;max-width:60ch;
+  }
+  .empty strong{color:var(--green-deep)}
+  .empty[data-show="true"]{display:block}
+
+  /* ---------- footer ---------- */
+  footer{
+    margin-top:56px;padding-top:22px;border-top:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;
+    font-size:.82rem;color:var(--ink-soft);
+  }
+  footer .fbrand{
+    font-family:var(--display);font-weight:600;color:var(--green-deep);font-size:.9rem;
+  }
+  footer a{color:var(--amber);text-decoration:none;font-weight:600}
+  footer a:hover{text-decoration:underline}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <p class="eyebrow">Akron Food Works</p>
-  <h1>Tools for your food business</h1>
-  <p class="lede">Free tools built for AFW members and the entrepreneurs on their way to the kitchen. No account needed — sign in inside any tool if you want your work saved across visits.</p>
 
-  <a class="tool" href="hours-that-pay.html">
-    <h2>Will It Pay? — Kitchen Calculator</h2>
-    <p>See your pre-sell target, true cost per unit, and the plan that fits — using AFW's real rates.</p>
-  </a>
+  <header>
+    <div class="brand">
+      <!-- LOGO SLOT: swap this lockup for the official AFW horizontal logo <img> (base64) if preferred -->
+      <span class="brand-name">Akron Food Works</span>
+      <span class="brand-sub">a program of The Well CDC</span>
+    </div>
 
-  <a class="tool" href="demo-tool.html">
-    <h2>Cloud Save Demo</h2>
-    <p>A quick way to test signing in and saving your work.</p>
-  </a>
+    <div class="hero">
+      <p class="eyebrow">Entrepreneur Tool Hub</p>
+      <h1>Every tool for the <em>road ahead</em></h1>
+      <p>Free tools built for AFW food entrepreneurs — from first recipe to your own front door. <em>Plant the seeds and grow until you can afford a place of your own.</em></p>
+    </div>
+  </header>
 
-  <a class="tool" href="AFW_Food_Cost_Builder_4.html">
-    <h2>Food Cost &amp; Pricing Builder</h2>
-    <p>Cost out your recipe and price it with confidence.</p>
-  </a>
+  <section class="picker" aria-label="Filter tools by where you are">
+    <p class="picker-label">Where are you right now?</p>
+    <div class="chips" id="chips" role="group" aria-label="Journey stage filters">
+      <button class="chip" data-phase="all" aria-pressed="true">Show everything</button>
+      <button class="chip" data-phase="explore" aria-pressed="false">A recipe &amp; a dream <small>Explore</small></button>
+      <button class="chip" data-phase="readiness" aria-pressed="false">Getting ready to join <small>Readiness</small></button>
+      <button class="chip" data-phase="create" aria-pressed="false">New in the kitchen <small>Create</small></button>
+      <button class="chip" data-phase="incubate" aria-pressed="false">Building repeat business <small>Incubate</small></button>
+      <button class="chip" data-phase="elevate" aria-pressed="false">Scaling up <small>Elevate</small></button>
+    </div>
 
-  <a class="tool" href="AFW_SOP_Builder_3.html">
-    <h2>SOP &amp; Recipe Card Builder</h2>
-    <p>Write your process down so anyone can run it.</p>
-  </a>
-  
-  <a class="tool soon" href="#">
-    <h2>Catering Pan Serving Size Calculator</h2>
-    <p>Calculate and standardize serving sizes</p>
-  </a>
+    <div class="guide-card" id="guideCard">
+      <h2 id="guideTitle">Not sure where you are?</h2>
+      <p id="guideBody">Pick the description that sounds most like today — there's no wrong answer, and nothing here is a test. Every stage has tools, and staff can walk any of them with you.</p>
+    </div>
+  </section>
 
-  <a class="tool soon" href="#">
-    <h2>First 30 Days Roadmap</h2>
-    <p>You've joined AFW - now let's get started!</p>
-  </a>
+  <main class="grid" id="grid" aria-live="polite"></main>
 
-  
-  <footer>Akron Food Works · a program of The Well CDC · 647 E. Market St., Akron, Ohio<br>Create · Incubate · Elevate</footer>
+  <div class="empty" id="empty">
+    <strong>Tools for this stage are on the way.</strong> In the meantime, talk with AFW staff — one-on-one training and technical assistance is available at every stage, and we can connect you with the right SPARK Akron partner.
+  </div>
+
+  <footer>
+    <span class="fbrand">Akron Food Works</span>
+    <span>Create · Incubate · Elevate</span>
+    <span>647 E. Market St., Akron, Ohio</span>
+    <a href="https://thewellakron.com/akronfoodworks">thewellakron.com/akronfoodworks</a>
+  </footer>
 </div>
+
+<script>
+/* ================= TOOL REGISTRY =================
+   Add / edit tools here. Everything else is generated.
+   phases: explore | readiness | create | incubate | elevate
+=================================================== */
+const TOOLS = [
+  {
+    name: "Readiness Check-In",
+    desc: "A guided inventory of your product, customers, money, and day-to-day — see where you stand and leave a staff conversation with clear next steps.",
+    phases: ["explore","readiness"],
+    format: "Worksheet",
+    status: "pending",
+    href: "" /* → afw-readiness-checkin.pdf */
+  },
+  {
+    name: "Hours-That-Pay Calculator",
+    desc: "See what a kitchen shift really costs — with AFW's actual rates and everything already included — and how many sales cover it.",
+    phases: ["readiness","create"],
+    format: "Interactive tool",
+    status: "pending",
+    href: "" /* → afw-hours-that-pay.html */
+  },
+  {
+    name: "Food Cost & Pricing Tool",
+    desc: "Build your true cost per item from ingredients and packaging, then set prices that pay you — including per-guest catering quotes.",
+    phases: ["readiness","create"],
+    format: "Interactive tool",
+    status: "pending",
+    href: "" /* → afw-food-cost-pricing.html */
+  },
+  {
+    name: "Path to First Sales",
+    desc: "Pre-sell first: collect orders before you book kitchen time, so every shift already has a paid reason to happen.",
+    phases: ["create"],
+    format: "Guide",
+    status: "pending",
+    href: "" /* → afw-path-to-first-sales.pdf */
+  },
+  {
+    name: "First 30 Days Roadmap",
+    desc: "A week-by-week plan from your first booking to your first repeat customer — realistic hours, first sales channel, and order intake from day one.",
+    phases: ["create"],
+    format: "Guide",
+    status: "pending",
+    href: "" /* → afw-first-30-days.pdf */
+  },
+  {
+    name: "Member Email Templates",
+    desc: "Ready-to-send emails for taking orders, invoicing, follow-ups, and turning first buyers into repeat customers.",
+    phases: ["create"],
+    format: "Templates",
+    status: "pending",
+    href: "" /* → afw-email-templates.docx */
+  },
+  {
+    name: "SOP & Recipe Card Builder",
+    desc: "Turn what's in your head into a written process someone else could follow — then print a station card for the line or a full SOP for training.",
+    phases: ["incubate","elevate"],
+    format: "Interactive tool",
+    status: "available",
+    href: "./afw-sop-builder.html"
+  },
+  {
+    name: "Growth Milestones",
+    desc: "Where your revenue and systems put you on the Create → Incubate → Elevate path — and what each next milestone unlocks.",
+    phases: ["incubate","elevate"],
+    format: "Interactive tool",
+    status: "soon"
+  },
+  {
+    name: "Catering & Smallwares Planner",
+    desc: "Plan durable equipment and smallwares as their own budget line — separate from your per-order food and packaging costs.",
+    phases: ["incubate"],
+    format: "Interactive tool",
+    status: "soon"
+  }
+];
+
+/* Per-phase guidance shown in the dark card when a stage is selected.
+   Language mirrors the facilitator key scripts — developmental, never gatekeeping. */
+const GUIDANCE = {
+  all: {
+    t: "Not sure where you are?",
+    b: "Pick the description that sounds most like today — there's no wrong answer, and nothing here is a test. Every stage has tools, and staff can walk any of them with you."
+  },
+  explore: {
+    t: "You've got a real idea — let's make it solid.",
+    b: "Start with the Readiness Check-In, get real feedback from buyers beyond friends and family, and rough out your cost per item early so pricing is never a surprise."
+  },
+  readiness: {
+    t: "You're close — mostly paperwork and numbers now.",
+    b: "Use the calculators to nail your costs and a plan to pay for your first months of kitchen hours. Staff will walk the license, ServSafe, and insurance steps with you."
+  },
+  create: {
+    t: "You're in — let's land your first sales and repeat them.",
+    b: "Pre-sell before you book hours, set up order intake and money tracking from day one, and make a plan to turn first buyers into regulars."
+  },
+  incubate: {
+    t: "You've got repeat business — let's make it consistent.",
+    b: "Time to document how you produce, plan capacity, and think about first help. Ask staff about Elevate workshops and SPARK specialized providers."
+  },
+  elevate: {
+    t: "Time to scale beyond the founder.",
+    b: "Wholesale, distribution, and lender-ready financials — and when you're ready, the graduation horizon toward a place of your own."
+  }
+};
+
+const PHASE_LABEL = {explore:"Explore", readiness:"Readiness", create:"Create", incubate:"Incubate", elevate:"Elevate"};
+
+const grid = document.getElementById("grid");
+const empty = document.getElementById("empty");
+const chips = document.querySelectorAll(".chip");
+
+function render(){
+  grid.innerHTML = TOOLS.map(t => {
+    const soon = t.status === "soon";
+    const pending = t.status === "pending";
+    const linkable = !soon && !pending && t.href;
+    return `
+    <article class="card${soon ? " is-soon" : ""}${pending ? " is-pending" : ""}" data-phases="${t.phases.join(" ")}">
+      <div class="card-top">
+        <span class="format">${t.format}</span>
+        ${soon ? `<span class="soon-flag">Coming soon</span>` : ""}
+        ${pending ? `<span class="soon-flag">Link pending</span>` : ""}
+      </div>
+      <h3>${t.name}</h3>
+      <p>${t.desc}</p>
+      <div class="tags">${t.phases.map(p => `<span class="tag">${PHASE_LABEL[p]}</span>`).join("")}</div>
+      ${linkable ? `<a class="open" href="${t.href}">Open</a>` : ""}
+      ${pending ? `<span class="pending-note">Ask AFW staff — link coming soon</span>` : ""}
+    </article>`;
+  }).join("");
+}
+
+function applyFilter(phase){
+  let shown = 0;
+  document.querySelectorAll(".card").forEach(c => {
+    const match = phase === "all" || c.dataset.phases.split(" ").includes(phase);
+    c.dataset.visible = match;
+    if (match) shown++;
+  });
+  empty.dataset.show = shown === 0 ? "true" : "false";
+  const g = GUIDANCE[phase] || GUIDANCE.all;
+  document.getElementById("guideTitle").textContent = g.t;
+  document.getElementById("guideBody").textContent = g.b;
+}
+
+chips.forEach(chip => chip.addEventListener("click", () => {
+  chips.forEach(c => c.setAttribute("aria-pressed", c === chip ? "true" : "false"));
+  applyFilter(chip.dataset.phase);
+}));
+
+render();
+applyFilter("all");
+</script>
 </body>
 </html>
