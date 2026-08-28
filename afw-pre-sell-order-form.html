@@ -1,0 +1,487 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akron Food Works — Pre-Sell Order Form</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  ============================================================
+  AKRON FOOD WORKS — PRE-SELL ORDER FORM
+  ============================================================
+  BUILD NOTES (staff / maintainer)
+
+  · Design system matches the Tool Hub / SOP Builder family:
+    Fraunces (display) + Hanken Grotesk (body); cream / forest
+    green / amber / gold palette. :root vars copied verbatim
+    from afw-sop-builder.html for consistency.
+
+  · PURPOSE: the fillable log for Roadmap Week 1–2 — "pre-sell
+    first, then book the kitchen." Members log each order as
+    they take it (name, item, qty, paid status, amount), and
+    the tool tracks progress against the same break-even goal
+    math used in the First 30 Days Roadmap:
+        margin per order = price − cost
+        orders needed     = kitchen session cost ÷ margin
+    Keeping that formula identical here (not re-derived) is
+    deliberate — the Roadmap, this tool, and the Pan Pricing
+    Toolkit should never disagree with each other.
+
+  · DATA MODEL: this tool has NO server and NO browser storage
+    (localStorage/sessionStorage intentionally avoided — same
+    reasoning as the SOP Builder: doesn't survive artifact/
+    preview contexts or a host move). The in-page state is the
+    working copy; Export JSON is the source of truth a member
+    saves themselves. Import reloads a prior session to keep
+    adding orders across visits.
+      When this suite gets real save/list API calls, swap the
+    export/import functions for those — the on-screen data
+    shape (see ORDER_FIELDS / the settings object below) does
+    not need to change.
+
+  · FUTURE HANDOFF: the exported JSON is intentionally flat
+    and typed so the (not-yet-built) Activation Tracker can
+    import it directly — one pre-sell cycle's orders roll up
+    into that tool's weekly orders/revenue columns.
+
+  · PRINT: the "Print this log" button prints the CURRENT
+    filled-in table (a paper record of real orders) using
+    @media print below. That's different from the separate
+    printable blank template (afw-pre-sell-order-form-
+    printable.pdf) — this print output isn't a substitute for
+    that, it's a snapshot of a session already in progress.
+
+  · No external dependencies beyond Google Fonts.
+  ============================================================
+-->
+<style>
+  :root{
+    --cream:#FBF6EC;
+    --paper:#FFFDF8;
+    --ink:#23372B;
+    --ink-soft:#4A5A4E;
+    --ink-faint:#7C897F;
+    --green:#2C5440;
+    --green-deep:#1E3A2D;
+    --amber:#C8612E;
+    --amber-soft:#E89B5A;
+    --gold:#D9A441;
+    --line:#E2D9C6;
+    --good-bg:#E7EFE5;
+    --warn-bg:#F7EDD2;
+    --shadow:0 18px 40px -22px rgba(30,58,45,.45);
+    --display:'Fraunces',Georgia,serif;
+    --body:'Hanken Grotesk',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--body);color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 85% -8%, rgba(217,164,65,.16), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(44,84,64,.12), transparent 55%),
+      var(--cream);
+    min-height:100vh;line-height:1.55;padding:0 20px 80px;
+  }
+  .wrap{max-width:980px;margin:0 auto}
+  button{font-family:inherit;cursor:pointer}
+  input,select{font-family:inherit;font-size:15px}
+  input:focus-visible,select:focus-visible,button:focus-visible{outline:2.5px solid var(--green);outline-offset:2px}
+
+  /* header */
+  header{padding:36px 0 6px}
+  .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .brand-name{font-family:var(--display);font-weight:600;font-size:1.1rem;color:var(--green-deep)}
+  .brand-sub{font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .eyebrow{font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);font-weight:700;margin:26px 0 10px}
+  h1{font-family:var(--display);font-weight:500;font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.06;letter-spacing:-.01em;max-width:24ch}
+  h1 em{font-style:italic;color:var(--green)}
+  .lede{margin-top:12px;font-size:1rem;color:var(--ink-soft);max-width:62ch}
+
+  /* cards */
+  .card{
+    background:var(--paper);border:1px solid var(--line);border-radius:16px;
+    padding:22px 24px;margin-top:22px;box-shadow:var(--shadow);
+  }
+  .card h2{font-family:var(--display);font-weight:600;font-size:1.15rem;color:var(--green-deep);margin-bottom:4px}
+  .card .sub{font-size:.86rem;color:var(--ink-soft);margin-bottom:16px}
+
+  /* settings grid */
+  .settings-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+  .field label{display:block;font-size:.78rem;font-weight:700;color:var(--green-deep);margin-bottom:5px}
+  .field .hint{display:block;font-size:.74rem;font-weight:400;color:var(--ink-faint);margin-top:3px}
+  .field input,.field select{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+    background:var(--cream);color:var(--ink);
+  }
+  .field input::placeholder{color:var(--ink-faint)}
+
+  /* goal readout */
+  .goal-readout{
+    margin-top:18px;padding:16px 18px;border-radius:12px;background:var(--good-bg);
+    border:1px solid rgba(44,84,64,.18);
+  }
+  .goal-readout.is-empty{background:var(--warn-bg);border-color:rgba(200,97,46,.22)}
+  .goal-readout .big{font-family:var(--display);font-size:1.3rem;font-weight:600;color:var(--green-deep)}
+  .goal-readout p{font-size:.86rem;color:var(--ink-soft);margin-top:4px}
+  .bar-track{margin-top:10px;height:8px;border-radius:99px;background:rgba(35,55,43,.12);overflow:hidden}
+  .bar-fill{height:100%;background:var(--green);border-radius:99px;transition:width .2s}
+
+  /* order table */
+  .tbl-wrap{overflow-x:auto;margin-top:6px}
+  table{width:100%;border-collapse:collapse;min-width:760px}
+  thead th{
+    text-align:left;font-size:.72rem;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-soft);font-weight:700;padding:0 8px 8px;border-bottom:2px solid var(--line);
+  }
+  tbody td{padding:6px 8px;border-bottom:1px solid var(--line);vertical-align:middle}
+  tbody tr:last-child td{border-bottom:none}
+  tbody input,tbody select{
+    width:100%;padding:7px 8px;border:1px solid var(--line);border-radius:7px;
+    background:var(--paper);font-size:.9rem;
+  }
+  tbody input[type=number]{width:90px}
+  td.qty input{width:64px}
+  td.rm{width:36px;text-align:center}
+  .rm-btn{
+    border:none;background:transparent;color:var(--amber);font-weight:700;font-size:1.1rem;
+    line-height:1;padding:4px 8px;border-radius:8px;
+  }
+  .rm-btn:hover{background:var(--warn-bg)}
+  .paid-unpaid{color:var(--ink-faint)}
+  .paid-deposit{color:var(--amber)}
+  .paid-full{color:var(--green)}
+
+  .add-row{
+    margin-top:12px;padding:9px 16px;border-radius:9px;border:1.5px dashed var(--green);
+    background:transparent;color:var(--green);font-weight:700;font-size:.88rem;
+  }
+  .add-row:hover{background:var(--good-bg)}
+
+  /* summary strip */
+  .summary{
+    display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    margin-top:18px;padding-top:18px;border-top:1px solid var(--line);
+  }
+  .stat .num{font-family:var(--display);font-size:1.5rem;font-weight:600;color:var(--green-deep)}
+  .stat .lbl{font-size:.76rem;color:var(--ink-soft);margin-top:2px}
+
+  /* actions */
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+  .actions button{
+    padding:10px 18px;border-radius:10px;font-weight:700;font-size:.9rem;border:1.5px solid var(--green);
+  }
+  .btn-primary{background:var(--green);color:var(--cream)}
+  .btn-primary:hover{background:var(--green-deep)}
+  .btn-ghost{background:transparent;color:var(--green)}
+  .btn-ghost:hover{background:var(--good-bg)}
+
+  footer{
+    margin-top:56px;padding-top:22px;border-top:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;
+    font-size:.82rem;color:var(--ink-soft);
+  }
+  footer .fbrand{font-family:var(--display);font-weight:600;color:var(--green-deep);font-size:.9rem}
+
+  @media print{
+    .no-print{display:none !important}
+    body{padding:0;background:var(--paper)}
+    .card{box-shadow:none;border:1px solid #999}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="brand-name">Akron Food Works</span>
+      <span class="brand-sub">a program of The Well CDC</span>
+    </div>
+    <p class="eyebrow">Pre-Sell Order Form</p>
+    <h1>Get the <em>orders</em> before you book the kitchen</h1>
+    <p class="lede">Roadmap Week 1–2: don't book hours and hope orders show up. Log every order as you take it — deposit or paid in full counts, a "maybe" doesn't — and this tracks how close you are to covering your kitchen session.</p>
+  </header>
+
+  <section class="card">
+    <h2>Your pre-sell cycle</h2>
+    <p class="sub">Fill in what you have — the goal below appears once price, cost, and kitchen cost are all set. Leave any of them blank to just track orders without the goal math.</p>
+    <div class="settings-grid">
+      <div class="field">
+        <label for="offerName">What you're selling</label>
+        <input type="text" id="offerName" placeholder="e.g., Jollof chicken plates">
+      </div>
+      <div class="field">
+        <label for="pickupDay">Pickup day</label>
+        <input type="text" id="pickupDay" placeholder="e.g., Friday 4–6 PM">
+      </div>
+      <div class="field">
+        <label for="price">Price per order ($)<span class="hint">From the Pricing Toolkit</span></label>
+        <input type="number" id="price" min="0" step="0.01" placeholder="12.00">
+      </div>
+      <div class="field">
+        <label for="cost">Cost per order ($)<span class="hint">From the Pricing Toolkit</span></label>
+        <input type="number" id="cost" min="0" step="0.01" placeholder="5.00">
+      </div>
+      <div class="field">
+        <label for="kitchenCost">Kitchen session cost ($)</label>
+        <input type="number" id="kitchenCost" min="0" step="0.01" placeholder="75.00">
+      </div>
+    </div>
+
+    <div class="goal-readout" id="goalReadout">
+      <div class="big" id="goalBig">Add a price, cost, and kitchen session cost to see your goal.</div>
+      <p id="goalSub"></p>
+      <div class="bar-track"><div class="bar-fill" id="goalBar" style="width:0%"></div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Order log</h2>
+    <p class="sub">One row per customer order. A row only counts toward your goal once it's marked Deposit or Paid in full.</p>
+    <div class="tbl-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Customer</th>
+            <th>Contact</th>
+            <th>Item</th>
+            <th>Qty</th>
+            <th>Paid?</th>
+            <th>Amount ($)</th>
+            <th>Notes</th>
+            <th class="no-print"></th>
+          </tr>
+        </thead>
+        <tbody id="orderRows"></tbody>
+      </table>
+    </div>
+    <button type="button" class="add-row no-print" id="btnAddRow">+ Add order</button>
+
+    <div class="summary">
+      <div class="stat"><div class="num" id="statCommitted">0</div><div class="lbl">Committed orders</div></div>
+      <div class="stat"><div class="num" id="statCollected">$0</div><div class="lbl">Collected so far</div></div>
+      <div class="stat"><div class="num" id="statRemaining">—</div><div class="lbl">Orders still needed</div></div>
+      <div class="stat"><div class="num" id="statTotalRows">0</div><div class="lbl">Total rows logged</div></div>
+    </div>
+  </section>
+
+  <div class="actions no-print">
+    <button type="button" class="btn-primary" id="btnExport">Export JSON</button>
+    <button type="button" class="btn-ghost" id="btnImport">Import JSON</button>
+    <button type="button" class="btn-ghost" id="btnPrint">Print this log</button>
+    <input type="file" id="fileImport" accept=".json,application/json" style="display:none">
+  </div>
+
+  <footer>
+    <span class="fbrand">Akron Food Works</span>
+    <span>Create · Incubate · Elevate</span>
+    <span>647 E. Market St., Akron, Ohio</span>
+  </footer>
+</div>
+
+<script>
+  // ---------- state ----------
+  const SETTINGS_FIELDS = ['offerName','pickupDay','price','cost','kitchenCost'];
+  let orders = [];
+  let seq = 0;
+
+  function blankOrder(){
+    seq += 1;
+    return { id:'o'+seq, name:'', contact:'', item:'', qty:1, paid:'unpaid', amount:null, notes:'' };
+  }
+
+  function moneyFmt(n){
+    if (n === null || n === undefined || isNaN(n)) return '$0';
+    return '$' + Number(n).toLocaleString(undefined,{minimumFractionDigits: Number.isInteger(n)?0:2, maximumFractionDigits:2});
+  }
+
+  // ---------- settings ----------
+  function getSettings(){
+    const s = {};
+    SETTINGS_FIELDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (id === 'price' || id === 'cost' || id === 'kitchenCost') {
+        s[id] = el.value === '' ? null : Number(el.value);
+      } else {
+        s[id] = el.value;
+      }
+    });
+    return s;
+  }
+
+  function applySettings(s){
+    if (!s) return;
+    SETTINGS_FIELDS.forEach(id => {
+      const el = document.getElementById(id);
+      if (s[id] !== undefined && s[id] !== null) el.value = s[id];
+    });
+  }
+
+  // ---------- goal math (must match the Roadmap's break-even formula exactly) ----------
+  function computeGoal(){
+    const s = getSettings();
+    const readout = document.getElementById('goalReadout');
+    const big = document.getElementById('goalBig');
+    const sub = document.getElementById('goalSub');
+    const bar = document.getElementById('goalBar');
+    const statRemaining = document.getElementById('statRemaining');
+
+    if (s.price === null || s.cost === null || s.kitchenCost === null) {
+      readout.classList.add('is-empty');
+      big.textContent = 'Add a price, cost, and kitchen session cost to see your goal.';
+      sub.textContent = '';
+      bar.style.width = '0%';
+      statRemaining.textContent = '—';
+      return null;
+    }
+
+    const margin = s.price - s.cost;
+    if (margin <= 0) {
+      readout.classList.add('is-empty');
+      big.textContent = 'Price needs to be higher than cost to calculate a goal.';
+      sub.textContent = 'Check these numbers against the Pricing Toolkit.';
+      bar.style.width = '0%';
+      statRemaining.textContent = '—';
+      return null;
+    }
+
+    const ordersNeeded = Math.ceil(s.kitchenCost / margin);
+    const committed = orders.filter(o => o.paid !== 'unpaid').length;
+    const pct = Math.max(0, Math.min(100, Math.round((committed / ordersNeeded) * 100)));
+
+    readout.classList.remove('is-empty');
+    if (committed >= ordersNeeded) {
+      big.textContent = `Goal met — ${committed} of ${ordersNeeded} orders`;
+      sub.textContent = 'Your kitchen session is paid for. Book it, or keep stacking orders for next week.';
+    } else {
+      big.textContent = `${committed} of ${ordersNeeded} orders`;
+      sub.textContent = `Margin per order is ${moneyFmt(margin)} — ${ordersNeeded - committed} more committed order${ordersNeeded-committed===1?'':'s'} covers the ${moneyFmt(s.kitchenCost)} session.`;
+    }
+    bar.style.width = pct + '%';
+    statRemaining.textContent = Math.max(0, ordersNeeded - committed);
+    return ordersNeeded;
+  }
+
+  // ---------- order rows ----------
+  function rowHtml(o){
+    return `
+      <tr data-id="${o.id}">
+        <td><input type="text" class="f-name" value="${escAttr(o.name)}" placeholder="Customer name"></td>
+        <td><input type="text" class="f-contact" value="${escAttr(o.contact)}" placeholder="Phone or text"></td>
+        <td><input type="text" class="f-item" value="${escAttr(o.item)}" placeholder="Item"></td>
+        <td class="qty"><input type="number" class="f-qty" min="1" value="${o.qty ?? 1}"></td>
+        <td>
+          <select class="f-paid paid-${o.paid}">
+            <option value="unpaid" ${o.paid==='unpaid'?'selected':''}>Unpaid</option>
+            <option value="deposit" ${o.paid==='deposit'?'selected':''}>Deposit</option>
+            <option value="full" ${o.paid==='full'?'selected':''}>Paid in full</option>
+          </select>
+        </td>
+        <td><input type="number" class="f-amount" min="0" step="0.01" value="${o.amount ?? ''}" placeholder="0.00"></td>
+        <td><input type="text" class="f-notes" value="${escAttr(o.notes)}" placeholder="Optional"></td>
+        <td class="rm no-print"><button type="button" class="rm-btn" title="Remove">×</button></td>
+      </tr>`;
+  }
+
+  function escAttr(v){
+    return (v ?? '').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;');
+  }
+
+  function renderRows(){
+    const tbody = document.getElementById('orderRows');
+    tbody.innerHTML = orders.map(rowHtml).join('');
+    tbody.querySelectorAll('tr').forEach(tr => {
+      const id = tr.dataset.id;
+      const o = orders.find(x => x.id === id);
+      tr.querySelector('.f-name').addEventListener('input', e => { o.name = e.target.value; });
+      tr.querySelector('.f-contact').addEventListener('input', e => { o.contact = e.target.value; });
+      tr.querySelector('.f-item').addEventListener('input', e => { o.item = e.target.value; });
+      tr.querySelector('.f-qty').addEventListener('input', e => { o.qty = Number(e.target.value) || 1; });
+      tr.querySelector('.f-amount').addEventListener('input', e => { o.amount = e.target.value === '' ? null : Number(e.target.value); renderSummary(); });
+      tr.querySelector('.f-notes').addEventListener('input', e => { o.notes = e.target.value; });
+      tr.querySelector('.f-paid').addEventListener('change', e => {
+        o.paid = e.target.value;
+        e.target.className = 'f-paid paid-' + o.paid;
+        renderSummary();
+      });
+      tr.querySelector('.rm-btn').addEventListener('click', () => {
+        orders = orders.filter(x => x.id !== id);
+        renderRows();
+        renderSummary();
+      });
+    });
+  }
+
+  function renderSummary(){
+    const committed = orders.filter(o => o.paid !== 'unpaid').length;
+    const collected = orders.reduce((sum,o) => sum + (Number(o.amount) || 0), 0);
+    document.getElementById('statCommitted').textContent = committed;
+    document.getElementById('statCollected').textContent = moneyFmt(collected);
+    document.getElementById('statTotalRows').textContent = orders.length;
+    computeGoal();
+  }
+
+  function addRow(){
+    orders.push(blankOrder());
+    renderRows();
+    renderSummary();
+  }
+
+  // ---------- export / import (JSON is the source of truth — no cloud, no browser storage) ----------
+  function collectState(){
+    return { _tool:'pre-sell-order-form', fileVersion:1, settings:getSettings(), orders };
+  }
+
+  function applyState(data){
+    if (!data) return;
+    applySettings(data.settings);
+    orders = Array.isArray(data.orders) ? data.orders.map(o => ({ ...blankOrder(), ...o })) : [];
+    renderRows();
+    renderSummary();
+  }
+
+  document.getElementById('btnExport').addEventListener('click', () => {
+    const s = getSettings();
+    const slug = (s.offerName || 'presell').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/(^-|-$)/g,'');
+    const date = new Date().toISOString().slice(0,10);
+    const blob = new Blob([JSON.stringify(collectState(), null, 2)], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `AFW_presell_${slug}_${date}.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+
+  document.getElementById('btnImport').addEventListener('click', () => {
+    document.getElementById('fileImport').click();
+  });
+
+  document.getElementById('fileImport').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      try { applyState(JSON.parse(reader.result)); }
+      catch (err) { alert('That file is not valid JSON.'); }
+    };
+    reader.readAsText(f);
+    e.target.value = '';
+  });
+
+  document.getElementById('btnPrint').addEventListener('click', () => window.print());
+  document.getElementById('btnAddRow').addEventListener('click', addRow);
+
+  SETTINGS_FIELDS.forEach(id => {
+    document.getElementById(id).addEventListener('input', renderSummary);
+  });
+
+  // ---------- init ----------
+  orders = [blankOrder(), blankOrder(), blankOrder()];
+  renderRows();
+  renderSummary();
+</script>
+</body>
+</html>
