@@ -1,0 +1,970 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akron Food Works — Path to First Sales</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  ============================================================
+  AKRON FOOD WORKS — PATH TO FIRST SALES
+  ============================================================
+  BUILD NOTES (staff / maintainer)
+
+  · Design system matches the Tool Hub / Food Cost / SOP Builder
+    family: Fraunces (display) + Hanken Grotesk (body); cream /
+    forest green / amber / gold palette. :root vars copied
+    verbatim for consistency.
+
+  · AUDIENCE NOTE: written for a member who may have never run a
+    business before. Plain words over jargon, every term glossed
+    on first use, nothing framed as a deadline or a test. The
+    sharper staff-side language (At Risk / Dormant / "most
+    dormancy starts here") stays in the staff Tracker and
+    Playbook — deliberately not surfaced here.
+
+  · PURPOSE: tracks a member's first trip through the core loop
+    — find buyers, take the order, make it, hand it over, get
+    paid, line up the next one — and their SECOND trip, which
+    is the actual activation signal. Model-agnostic: "one cycle"
+    is member-defined, so it fits a pickup day, a catering gig,
+    a wholesale PO, a truck week, or something we haven't
+    thought of ("Something else" is a first-class option, not a
+    fallback).
+
+  · ------ CLOUD SAVE: READ THIS BEFORE COPYING THE PATTERN ----
+    The live afw-cloud.js exports:
+        ready, onChange, user, status, isConfigured,
+        signIn, signOut, list, get, save, remove,
+        mountAccountBar, mountToolBar, mountSavedWork
+    There is NO AFWCloud.init() and NO AFWCloud.scheduleSave().
+
+    !! afw-hours-that-pay.html currently calls BOTH of those !!
+    Its cloud save is therefore dead code — it throws and no
+    scenario is ever written. Nothing has been saved under the
+    'hours-that-pay' key, which is why this tool does not offer
+    to load from it. Worth fixing in that file separately:
+    swap its AFWCloud.init({...}) block for a mountToolBar call
+    shaped like the one at the bottom of this file.
+
+  · CROSS-TOOL LOADING: "Use numbers I already saved" calls
+    AFWCloud.list('food-cost') / .get(id) to read a saved cost
+    card from the member's account. It pulls only fields the
+    Food Cost tool actually STORES: price, productName, and
+    kitchen session cost (kitchenHours x effective rate).
+      It deliberately does NOT recompute cost-per-item. The Food
+    Cost tool calculates perUnit at render time from ingredient
+    and packaging unit conversions and never saves it, and
+    re-implementing that math here would create a second source
+    of truth that can drift — the exact thing the shared
+    break-even formula is meant to prevent.
+      ONE-LINE FIX that would let this tool pull cost too: in
+    afw-food-cost-pricing.html, change
+        function captureState(){ return {...S, fileVersion:2}; }
+    to also stash the computed value, e.g.
+        return {...S, fileVersion:3, costPerUnit: calc().perUnit};
+    This file already reads data.costPerUnit when present, so it
+    starts working the moment that ships — no change needed here.
+
+  · DATA MODEL: no browser storage (localStorage/sessionStorage
+    intentionally avoided — same reasoning as the other tools).
+    JSON download is the offline source of truth; cloud save is
+    strictly optional and guarded.
+
+  · "I WOULD LIKE HELP" FLAG: a self-serve checkbox in the
+    Numbers section. It is a NOTE, not a message — nothing is
+    sent, and the on-screen copy says so rather than implying
+    someone has been notified. It persists in the downloaded
+    JSON and the cloud save (needHelp:true) and it prints, so
+    it surfaces three ways: on the member's screen, on the
+    printout they bring to a check-in, and in their saved
+    record.
+      IF THIS SHOULD EVER ACTUALLY NOTIFY STAFF, that's a
+    separate build (a Supabase row staff can query, or a
+    mailto). Don't reword the copy to promise notification
+    until that exists.
+
+  · PRINT SCOPE — the content cards MUST print. An earlier draft
+    marked every card .no-print, which meant "Print this page"
+    emitted only the header, status banner, and footer: the
+    checklists, numbers, and leads list all vanished, gutting
+    the one feature meant to back a staff check-in. Only the
+    Save card and interactive controls (buttons, import row,
+    picker, note box) carry .no-print now. Inputs are restyled
+    as ruled lines and unselected model chips are hidden so the
+    printout reads as a filled-in form, not empty boxes.
+
+  · No external dependencies beyond Google Fonts.
+  ============================================================
+-->
+<style>
+  :root{
+    --cream:#FBF6EC;
+    --paper:#FFFDF8;
+    --ink:#23372B;
+    --ink-soft:#4A5A4E;
+    --ink-faint:#7C897F;
+    --green:#2C5440;
+    --green-deep:#1E3A2D;
+    --amber:#C8612E;
+    --amber-soft:#E89B5A;
+    --gold:#D9A441;
+    --line:#E2D9C6;
+    --good-bg:#E7EFE5;
+    --warn-bg:#F7EDD2;
+    --shadow:0 18px 40px -22px rgba(30,58,45,.45);
+    --display:'Fraunces',Georgia,serif;
+    --body:'Hanken Grotesk',system-ui,sans-serif;
+    /* AFW Cloud account-bar palette bridge */
+    --afw-cream: var(--cream);
+    --afw-forest: var(--green-deep);
+    --afw-amber: var(--amber);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--body);color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 85% -8%, rgba(217,164,65,.16), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(44,84,64,.12), transparent 55%),
+      var(--cream);
+    min-height:100vh;line-height:1.55;padding:0 20px 80px;
+  }
+  .wrap{max-width:980px;margin:0 auto}
+  button{font-family:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit;font-size:15px}
+  input:focus-visible,select:focus-visible,button:focus-visible,textarea:focus-visible{outline:2.5px solid var(--green);outline-offset:2px}
+
+  /* header */
+  header{padding:36px 0 6px}
+  .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .brand-name{font-family:var(--display);font-weight:600;font-size:1.1rem;color:var(--green-deep)}
+  .brand-sub{font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .eyebrow{font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);font-weight:700;margin:26px 0 10px}
+  h1{font-family:var(--display);font-weight:500;font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.08;letter-spacing:-.01em;max-width:26ch}
+  h1 em{font-style:italic;color:var(--green)}
+  .lede{margin-top:12px;font-size:1rem;color:var(--ink-soft);max-width:64ch}
+
+  /* plain-language explainer that defines "cycle" up front */
+  .explainer{
+    margin-top:20px;background:var(--paper);border:1px solid var(--line);
+    border-left:4px solid var(--gold);border-radius:12px;padding:16px 20px;max-width:70ch;
+  }
+  .explainer h2{font-family:var(--display);font-weight:600;font-size:1rem;color:var(--green-deep);margin-bottom:6px}
+  .explainer p{font-size:.92rem;color:var(--ink-soft)}
+  .loop{display:flex;flex-wrap:wrap;gap:6px 4px;margin-top:10px;align-items:center}
+  .loop span{
+    font-size:.8rem;font-weight:600;color:var(--green-deep);background:var(--good-bg);
+    border:1px solid rgba(44,84,64,.18);border-radius:999px;padding:4px 11px;
+  }
+  .loop i{color:var(--ink-faint);font-style:normal;font-size:.8rem}
+
+  /* cards */
+  .card{
+    background:var(--paper);border:1px solid var(--line);border-radius:16px;
+    padding:22px 24px;margin-top:22px;box-shadow:var(--shadow);
+  }
+  .card h2{font-family:var(--display);font-weight:600;font-size:1.15rem;color:var(--green-deep);margin-bottom:4px}
+  .card .sub{font-size:.86rem;color:var(--ink-soft);margin-bottom:16px;max-width:68ch}
+  .optional-tag{
+    display:inline-block;font-size:.66rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;
+    color:var(--ink-soft);background:var(--cream);border:1px solid var(--line);
+    padding:3px 9px;border-radius:999px;margin-left:8px;vertical-align:middle;
+  }
+
+  .settings-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(180px,1fr))}
+  .field label{display:block;font-size:.82rem;font-weight:700;color:var(--green-deep);margin-bottom:5px}
+  .field .hint{display:block;font-size:.76rem;font-weight:400;color:var(--ink-faint);margin-top:3px}
+  .field input,.field select,.field textarea{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+    background:var(--cream);color:var(--ink);
+  }
+  .field textarea{resize:vertical;min-height:52px;font-size:.92rem}
+  .field-wide{grid-column:1 / -1}
+
+  .model-picker{display:flex;flex-wrap:wrap;gap:9px;margin-top:4px}
+  .model-chip{
+    font-size:.88rem;font-weight:600;color:var(--green-deep);
+    background:var(--cream);border:1.5px solid var(--line);border-radius:999px;
+    padding:8px 15px;transition:border-color .15s,background .15s,color .15s;
+  }
+  .model-chip:hover{border-color:var(--gold)}
+  .model-chip[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--cream)}
+
+  /* goal readout */
+  .goal-readout{margin-top:16px;padding:16px 18px;border-radius:12px;background:var(--good-bg);border:1px solid rgba(44,84,64,.18)}
+  .goal-readout.is-empty{background:var(--warn-bg);border-color:rgba(200,97,46,.22)}
+  .goal-readout .big{font-family:var(--display);font-size:1.2rem;font-weight:600;color:var(--green-deep)}
+  .goal-readout p{font-size:.86rem;color:var(--ink-soft);margin-top:4px}
+  .bar-track{margin-top:10px;height:8px;border-radius:99px;background:rgba(35,55,43,.12);overflow:hidden}
+  .bar-fill{height:100%;background:var(--green);border-radius:99px;transition:width .2s}
+
+  /* load-numbers row */
+  .load-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .load-help{font-size:.8rem;color:var(--ink-faint);max-width:62ch}
+  .note-box{
+    font-size:.85rem;border-radius:9px;padding:9px 13px;margin-top:12px;display:none;
+    color:var(--green-deep);background:var(--good-bg);border:1px solid rgba(44,84,64,.18);
+  }
+  .note-box.is-shown{display:block}
+  .note-box.is-warn{color:var(--ink);background:var(--warn-bg);border-color:rgba(200,97,46,.24)}
+
+  /* "I'd like help with this" flag */
+  .help-flag{
+    display:flex;align-items:flex-start;gap:11px;margin-top:16px;padding:13px 15px;
+    border:1.5px dashed var(--line);border-radius:11px;background:var(--cream);cursor:pointer;
+    transition:background .15s,border-color .15s;
+  }
+  .help-flag:hover{border-color:var(--gold)}
+  .help-flag.is-on{background:var(--warn-bg);border-style:solid;border-color:rgba(200,97,46,.32)}
+  .help-flag input{width:19px;height:19px;margin-top:1px;accent-color:var(--amber);flex-shrink:0}
+  .help-flag .hf-label{display:block;font-weight:700;color:var(--green-deep);font-size:.9rem}
+  .help-flag .hf-sub{display:block;font-size:.82rem;color:var(--ink-soft);margin-top:2px}
+
+  /* saved-record picker */
+  .picker-list{margin-top:12px;display:none;flex-direction:column;gap:8px}
+  .picker-list.is-shown{display:flex}
+  .picker-row{
+    display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;
+    border:1px solid var(--line);border-radius:10px;background:var(--cream);padding:10px 13px;
+  }
+  .picker-row b{font-size:.92rem;color:var(--green-deep)}
+  .picker-row span{display:block;font-size:.76rem;color:var(--ink-faint)}
+
+  /* status banner */
+  .status-banner{
+    background:linear-gradient(140deg,var(--green-deep),var(--green) 78%);
+    color:var(--cream);border-radius:20px;padding:22px 26px;margin-top:22px;
+    box-shadow:var(--shadow), inset 0 0 0 1px rgba(217,164,65,.28);
+    position:relative;overflow:hidden;
+  }
+  .status-banner::after{
+    content:"";position:absolute;inset:auto -40px -60px auto;width:220px;height:220px;border-radius:50%;
+    background:radial-gradient(circle, rgba(217,164,65,.32), transparent 70%);pointer-events:none;
+  }
+  .status-banner .eyebrow2{font-size:.7rem;letter-spacing:.2em;text-transform:uppercase;color:var(--gold);font-weight:700}
+  .status-banner h2{font-family:var(--display);font-weight:500;font-style:italic;font-size:1.35rem;margin-top:6px;color:var(--cream)}
+  .status-banner p{margin-top:8px;font-size:.94rem;color:rgba(251,246,236,.88);max-width:64ch}
+
+  /* checklists */
+  .checklist{display:flex;flex-direction:column;gap:10px}
+  .check-item{
+    display:flex;align-items:flex-start;gap:12px;padding:13px 15px;
+    border:1px solid var(--line);border-radius:11px;background:var(--cream);cursor:pointer;
+    transition:background .15s,border-color .15s;
+  }
+  .check-item.is-done{background:var(--good-bg);border-color:rgba(44,84,64,.22)}
+  .check-item input[type="checkbox"]{width:20px;height:20px;margin-top:1px;accent-color:var(--green);flex-shrink:0}
+  .ci-body{flex:1;min-width:0}
+  .ci-label{display:block;font-weight:700;color:var(--green-deep);font-size:.94rem}
+  .ci-sub{display:block;font-size:.83rem;color:var(--ink-soft);margin-top:2px}
+  .ci-date{display:none;align-items:center;gap:6px;font-size:.78rem;color:var(--ink-faint);margin-top:8px}
+  .check-item.is-done .ci-date{display:flex}
+  .ci-date input{border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:.78rem;background:var(--paper);width:150px}
+
+  /* leads */
+  .lead-head,.lead-row{display:grid;grid-template-columns:1.4fr 1.4fr 1.4fr 1fr 34px;gap:8px}
+  .lead-head{
+    font-size:.7rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-faint);margin-bottom:8px;
+  }
+  .lead-row{align-items:center;margin-bottom:8px}
+  .lead-row input,.lead-row select{padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--paper);font-size:.88rem;width:100%}
+  .rm-lead-btn{border:none;background:transparent;color:var(--amber);font-weight:700;font-size:1.1rem;line-height:1;padding:6px;border-radius:6px}
+  .rm-lead-btn:hover{background:var(--warn-bg)}
+  .add-row{
+    margin-top:10px;padding:9px 16px;border-radius:9px;border:1.5px dashed var(--green);
+    background:transparent;color:var(--green);font-weight:700;font-size:.88rem;
+  }
+  .add-row:hover{background:var(--good-bg)}
+
+  /* timeline */
+  .timeline-note{font-size:.87rem;color:var(--ink-soft);margin-bottom:16px;padding:12px 14px;background:var(--cream);border-radius:10px;border:1px solid var(--line);max-width:70ch}
+  .timeline{display:flex;flex-direction:column}
+  .tl-item{display:flex;gap:16px;padding:4px 0 22px;position:relative}
+  .tl-item::before{content:"";position:absolute;left:6px;top:22px;bottom:0;width:2px;background:var(--line)}
+  .tl-item:last-child::before{display:none}
+  .tl-dot{width:14px;height:14px;border-radius:50%;background:var(--paper);border:2.5px solid var(--line);margin-top:3px;flex-shrink:0;position:relative;z-index:1}
+  .tl-item.is-past .tl-dot{background:var(--green);border-color:var(--green)}
+  .tl-item.is-next .tl-dot{background:var(--gold);border-color:var(--gold)}
+  .tl-day{font-size:.72rem;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--amber)}
+  .tl-item.is-next .tl-day{color:var(--green-deep)}
+  .tl-goal{font-family:var(--display);font-weight:600;color:var(--green-deep);font-size:1rem;margin-top:2px}
+  .tl-body{font-size:.86rem;color:var(--ink-soft);margin-top:3px;max-width:56ch}
+  .tl-flag{display:inline-block;margin-left:8px;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--green-deep);background:rgba(217,164,65,.28);padding:2px 8px;border-radius:999px}
+
+  /* actions */
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:18px}
+  .actions button{padding:10px 18px;border-radius:10px;font-weight:700;font-size:.9rem;border:1.5px solid var(--green)}
+  .btn-primary{background:var(--green);color:var(--cream)}
+  .btn-primary:hover{background:var(--green-deep)}
+  .btn-ghost{background:transparent;color:var(--green)}
+  .btn-ghost:hover{background:var(--good-bg)}
+  .btn-small{padding:7px 14px;font-size:.83rem;border-radius:8px}
+
+  footer{
+    margin-top:56px;padding-top:22px;border-top:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;font-size:.82rem;color:var(--ink-soft);
+  }
+  footer .fbrand{font-family:var(--display);font-weight:600;color:var(--green-deep);font-size:.9rem}
+
+  @media print{
+    /* .no-print is for controls that mean nothing on paper. The CONTENT
+       cards deliberately DO print — this printout is what a member brings
+       to a check-in, so the checklists, numbers, and leads have to be on it. */
+    .no-print,
+    .load-row,.load-help,.picker-list,.note-box,
+    .add-row,.rm-lead-btn,.actions,#afw-toolbar{display:none !important}
+
+    body{padding:0;background:var(--paper);line-height:1.4}
+    .wrap{max-width:none}
+    .card{box-shadow:none;border:1px solid #bbb;break-inside:avoid;margin-top:14px;padding:16px 18px}
+    .explainer{break-inside:avoid}
+    .status-banner{box-shadow:none;-webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid}
+
+    /* inputs read as plain text on paper rather than empty boxes */
+    .field input,.field textarea,.lead-row input,.lead-row select,.ci-date input{
+      border:none;border-bottom:1px solid #ccc;border-radius:0;background:transparent;padding:2px 0;
+    }
+    .check-item,.help-flag,.goal-readout,.loop span{
+      -webkit-print-color-adjust:exact;print-color-adjust:exact;break-inside:avoid;
+    }
+    /* only the selected sales model is meaningful once printed */
+    .model-chip{display:none}
+    .model-chip[aria-pressed="true"]{
+      display:inline-flex;-webkit-print-color-adjust:exact;print-color-adjust:exact;
+    }
+    .timeline-note,.sub{break-inside:avoid}
+  }
+  @media (max-width:640px){
+    .lead-row,.lead-head{grid-template-columns:1fr}
+    .lead-head{display:none}
+    .rm-lead-btn{justify-self:flex-end}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="brand-name">Akron Food Works</span>
+      <span class="brand-sub">a program of The Well CDC</span>
+    </div>
+    <p class="eyebrow">Path to First Sales</p>
+    <h1>One sale is a start. <em>Two makes it a business.</em></h1>
+    <p class="lede">This page keeps track of your first few sales, step by step, so you can always see what you have done and what is next. Nothing here is graded, and there is no wrong place to be on it.</p>
+
+    <div class="explainer">
+      <h2>One word we use a lot: cycle</h2>
+      <p>A <strong>cycle</strong> is one full trip around the same six steps that every food business repeats. It does not matter what you sell or how often you sell it &mdash; the steps are the same:</p>
+      <div class="loop">
+        <span>Find buyers</span><i>&rarr;</i>
+        <span>Take the order</span><i>&rarr;</i>
+        <span>Book the kitchen</span><i>&rarr;</i>
+        <span>Make it</span><i>&rarr;</i>
+        <span>Hand it over &amp; get paid</span><i>&rarr;</i>
+        <span>Line up the next one</span>
+      </div>
+      <p style="margin-top:10px">Doing that once means it worked. Doing it twice means it was not luck. That is the whole idea of this page.</p>
+    </div>
+  </header>
+
+  <!-- ================= ABOUT YOUR BUSINESS ================= -->
+  <section class="card">
+    <h2>A little about your business</h2>
+    <p class="sub">Just so the rest of the page uses your words. You can change any of this later, and skip anything you are not sure about yet.</p>
+    <div class="settings-grid">
+      <div class="field field-wide">
+        <label for="business">What is your business called?</label>
+        <input type="text" id="business" placeholder="Your business name, or whatever you have been calling it">
+      </div>
+      <div class="field field-wide">
+        <label>How do you sell to people?</label>
+        <div class="model-picker" id="modelPicker" role="group" aria-label="How you sell">
+          <button type="button" class="model-chip" data-model="pickup" aria-pressed="true">A pickup day</button>
+          <button type="button" class="model-chip" data-model="catering" aria-pressed="false">Catering &amp; events</button>
+          <button type="button" class="model-chip" data-model="wholesale" aria-pressed="false">Selling to stores</button>
+          <button type="button" class="model-chip" data-model="truck" aria-pressed="false">A food truck</button>
+          <button type="button" class="model-chip" data-model="other" aria-pressed="false">Something else</button>
+        </div>
+        <span class="hint" style="margin-top:8px">Pick the closest one. If you do more than one, choose what you are focused on right now.</span>
+      </div>
+      <div class="field field-wide">
+        <label for="cycleDef">In your own words, what does one cycle look like for you?<span class="hint" id="cycleHint">For example: &ldquo;a week of pickup orders&rdquo;</span></label>
+        <textarea id="cycleDef" placeholder="There is no right answer. Just describe one full round of selling and making."></textarea>
+      </div>
+      <div class="field">
+        <label for="onboardDate">When did you join AFW?<span class="hint">This fills in the check-in dates further down</span></label>
+        <input type="date" id="onboardDate">
+      </div>
+    </div>
+  </section>
+
+  <!-- ================= NUMBERS ================= -->
+  <section class="card">
+    <h2>Your numbers<span class="optional-tag">Optional</span></h2>
+    <p class="sub">If you know these, we will work out how many orders it takes to cover your kitchen time, so you are never guessing whether a session is worth booking. Do not have them yet? Skip this whole section. Everything else still works.</p>
+
+    <div class="load-row">
+      <button type="button" class="btn-ghost btn-small" id="btnCloud">Use numbers I already saved</button>
+      <button type="button" class="btn-ghost btn-small" id="btnImport">Open a file from my computer</button>
+      <input type="file" id="fileImport" accept="application/json" style="display:none">
+    </div>
+    <p class="load-help" style="margin-top:8px">The first button looks in your AFW account for a cost card you saved in the Food Cost &amp; Pricing tool. The second opens a file you downloaded from this page or from the Pre-Sell Order Form.</p>
+    <div class="note-box" id="noteBox"></div>
+    <div class="picker-list" id="pickerList"></div>
+
+    <div class="settings-grid" style="margin-top:18px">
+      <div class="field">
+        <label for="price">What one order costs the customer ($)<span class="hint">Your selling price</span></label>
+        <input type="number" id="price" min="0" step="0.01" placeholder="12.00">
+      </div>
+      <div class="field">
+        <label for="cost">What one order costs you to make ($)<span class="hint">Ingredients, packaging, your time</span></label>
+        <input type="number" id="cost" min="0" step="0.01" placeholder="5.00">
+      </div>
+      <div class="field">
+        <label for="kitchenCost">What one kitchen session costs ($)<span class="hint">What you pay AFW for the booking</span></label>
+        <input type="number" id="kitchenCost" min="0" step="0.01" placeholder="75.00">
+      </div>
+      <div class="field">
+        <label for="ordersSecured">Orders you have so far<span class="hint">Only ones that are paid or have a deposit</span></label>
+        <input type="number" id="ordersSecured" min="0" step="1" placeholder="0">
+      </div>
+    </div>
+
+    <div class="goal-readout is-empty" id="goalReadout">
+      <div class="big" id="goalBig">Fill in the three dollar amounts above and we will work out your order goal.</div>
+      <p id="goalSub"></p>
+      <div class="bar-track"><div class="bar-fill" id="goalBar" style="width:0%"></div></div>
+    </div>
+
+    <label class="help-flag" id="helpFlag">
+      <input type="checkbox" id="needHelp">
+      <span>
+        <span class="hf-label">I would like help with these numbers</span>
+        <span class="hf-sub" id="helpSub">Tick this and we will go through them with you at your next check-in. Plenty of people do &mdash; working out what a plate really costs is one of the harder parts.</span>
+      </span>
+    </label>
+  </section>
+
+  <!-- ================= STATUS ================= -->
+  <div class="status-banner" id="statusBanner">
+    <p class="eyebrow2">Where you are</p>
+    <h2 id="statusHead">Just getting started</h2>
+    <p id="statusBody">Everybody starts here. Work down the list below whenever you are ready. There is no clock running.</p>
+  </div>
+
+  <!-- ================= CYCLE 1 ================= -->
+  <section class="card">
+    <h2>Cycle 1 &mdash; your first time through</h2>
+    <p class="sub">Tick each one off as it happens. They do not have to happen in this order, and it is fine if some take a while. When you tick a box, today's date fills in. Change it if you are catching up on something from last week.</p>
+    <div class="checklist" id="c1List"></div>
+  </section>
+
+  <!-- ================= CYCLE 2 ================= -->
+  <section class="card">
+    <h2>Cycle 2 &mdash; doing it again</h2>
+    <p class="sub">The same six steps, one more time. This is the one that matters most, because it is the difference between one good weekend and a business. Start ticking these whenever you like, even if Cycle 1 is not finished.</p>
+    <div class="checklist" id="c2List"></div>
+  </section>
+
+  <!-- ================= LEADS ================= -->
+  <section class="card">
+    <h2>Who is next</h2>
+    <p class="sub">Anyone who might buy from you again, or for the first time: a repeat customer, a store that said maybe, someone who asked about catering. Keep adding to it. This list is the most valuable thing you will build here.</p>
+    <div class="lead-head">
+      <span>Name</span><span>How to reach them</span><span>What they want</span><span>Where it stands</span><span></span>
+    </div>
+    <div id="leadRows"></div>
+    <button type="button" class="add-row" id="btnAddLead">+ Add someone</button>
+  </section>
+
+  <!-- ================= TIMELINE ================= -->
+  <section class="card">
+    <h2>When we will check in with you</h2>
+    <div class="timeline-note">These are the points where someone from AFW reaches out. They are check-ins, not deadlines, and you do not need to have anything finished for them. Everyone moves at a different speed depending on how they sell &mdash; a caterer's first cycle often takes longer than a pickup day, and that is completely normal.</div>
+    <div class="timeline" id="timeline"></div>
+  </section>
+
+  <!-- ================= SAVE ================= -->
+  <section class="card no-print">
+    <h2>Save what you have done</h2>
+    <p class="sub">Two ways, and you can use either. Download a file to keep on your phone or computer, or sign in to save it to your AFW account and pick it back up on any device.</p>
+    <div class="actions">
+      <button type="button" class="btn-primary" id="btnExport">Download a file</button>
+      <button type="button" class="btn-ghost" id="btnImport2">Open a saved file</button>
+      <button type="button" class="btn-ghost" id="btnPrint">Print this page</button>
+    </div>
+    <div id="afw-toolbar" style="margin-top:18px"></div>
+  </section>
+
+  <footer>
+    <span class="fbrand">Akron Food Works</span>
+    <span>Create · Incubate · Elevate</span>
+    <span>647 E. Market St., Akron, Ohio</span>
+  </footer>
+</div>
+
+<script src="./afw-config.js"></script>
+<script src="./afw-cloud.js"></script>
+<script>
+(function(){
+  const $ = id => document.getElementById(id);
+  const money = n => '$' + Number(n||0).toFixed(2);
+  const todayISO = () => new Date().toISOString().slice(0,10);
+  const esc = s => String(s==null?'':s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+
+  /* ---------- static config ---------- */
+  const MODEL_HINTS = {
+    pickup:    'For example: \u201Ca week of pickup orders\u201D',
+    catering:  'For example: \u201Cone event, from booking it to serving it\u201D',
+    wholesale: 'For example: \u201Cone order for one store\u201D',
+    truck:     'For example: \u201Ca week of service days, plus the prep for them\u201D',
+    other:     'Describe one full round of selling and making, however it works for you'
+  };
+
+  const CHECK_ITEMS = [
+    { key:'offer',     label:'I know what I am selling and what to charge',
+                       sub:'One thing to start with, and a price you have actually worked out.' },
+    { key:'presell',   label:'I have enough orders to make it worth it',
+                       sub:'Paid or with a deposit down. A \u201Cmaybe\u201D does not count yet.' },
+    { key:'booked',    label:'My kitchen time is booked',
+                       sub:'The session is on the calendar in The Food Corridor.' },
+    { key:'fulfilled', label:'I made it and got it to people',
+                       sub:'Cooked, packed, and handed over, delivered, or served.' },
+    { key:'paid',      label:'I have been paid in full',
+                       sub:'Every dollar for this round is collected.' },
+    { key:'leads',     label:'I know who is buying next time',
+                       sub:'At least one person or store lined up for the next round.' }
+  ];
+
+  const CADENCE = [
+    { day:0,  goal:'You joined',                body:'Welcome in. Nothing to do yet, this is just day one.' },
+    { day:5,  goal:'Quick setup check',         body:'We make sure your logins and tools are working. Nothing to prepare.' },
+    { day:10, goal:'How is the offer going?',   body:'A chat about what you are selling. It is normal to still be figuring it out.' },
+    { day:21, goal:'Checking in',               body:'Wherever you have got to, we help with whatever is next.' },
+    { day:30, goal:'Looking at cycle 1',        body:'However far along you are, we go through it together.' },
+    { day:45, goal:'A proper catch-up',         body:'We celebrate what is working, or make a fresh plan together. Either one is a good outcome.' }
+  ];
+
+  /* ---------- state ---------- */
+  const state = {
+    business:'', model:'pickup', cycleDef:'', onboardDate:'',
+    price:null, cost:null, kitchenCost:null, ordersSecured:0,
+    needHelp:false,
+    leads:[], c1:{}, c2:{}
+  };
+  CHECK_ITEMS.forEach(i => {
+    state.c1[i.key] = { checked:false, date:'' };
+    state.c2[i.key] = { checked:false, date:'' };
+  });
+  let leadSeq = 0;
+  const blankLead = () => { leadSeq += 1; return { id:'l'+leadSeq, name:'', contact:'', item:'', status:'interested' }; };
+
+  /* ---------- notes ---------- */
+  function note(msg, warn){
+    const n = $('noteBox');
+    n.textContent = msg;
+    n.classList.toggle('is-warn', !!warn);
+    n.classList.add('is-shown');
+  }
+
+  /* ---------- model picker ---------- */
+  const modelChips = document.querySelectorAll('.model-chip');
+  modelChips.forEach(chip => chip.addEventListener('click', () => {
+    modelChips.forEach(c => c.setAttribute('aria-pressed', c === chip ? 'true' : 'false'));
+    state.model = chip.dataset.model;
+    $('cycleHint').textContent = MODEL_HINTS[state.model] || '';
+  }));
+
+  /* ---------- goal math ----------
+     Same formula as the First 30 Days Roadmap and the Pre-Sell
+     Order Form: margin = price - cost; orders = kitchen / margin.
+     Kept identical on purpose so the tools never disagree. */
+  function computeGoal(){
+    const price = $('price').value === '' ? null : Number($('price').value);
+    const cost = $('cost').value === '' ? null : Number($('cost').value);
+    const kitchenCost = $('kitchenCost').value === '' ? null : Number($('kitchenCost').value);
+    state.price = price; state.cost = cost; state.kitchenCost = kitchenCost;
+    state.ordersSecured = Number($('ordersSecured').value) || 0;
+
+    const readout = $('goalReadout'), big = $('goalBig'), sub = $('goalSub'), bar = $('goalBar');
+
+    if (price === null || cost === null || kitchenCost === null){
+      readout.classList.add('is-empty');
+      big.textContent = 'Fill in the three dollar amounts above and we will work out your order goal.';
+      sub.textContent = '';
+      bar.style.width = '0%';
+      return;
+    }
+    const margin = price - cost;
+    if (margin <= 0){
+      readout.classList.add('is-empty');
+      big.textContent = 'Right now each order costs more to make than you charge for it.';
+      sub.textContent = 'This is a really common thing to find early on, and it is fixable. The Food Cost & Pricing tool walks through raising the price or trimming the cost, and staff will go through it with you.';
+      bar.style.width = '0%';
+      return;
+    }
+    const target = Math.ceil(kitchenCost / margin);
+    const pct = Math.max(0, Math.min(100, Math.round((state.ordersSecured / target) * 100)));
+    readout.classList.remove('is-empty');
+    if (state.ordersSecured >= target){
+      big.textContent = 'You are there \u2014 ' + state.ordersSecured + ' of ' + target + ' orders';
+      sub.textContent = 'Your kitchen session is paid for before you walk in. Nice work.';
+    } else {
+      big.textContent = state.ordersSecured + ' of ' + target + ' orders';
+      sub.textContent = 'You make ' + money(margin) + ' on each order, so ' + target +
+        ' of them covers the ' + money(kitchenCost) + ' session. That is ' +
+        (target - state.ordersSecured) + ' more to go.';
+    }
+    bar.style.width = pct + '%';
+  }
+  ['price','cost','kitchenCost','ordersSecured'].forEach(id => $(id).addEventListener('input', computeGoal));
+
+  /* ---------- "I would like help" flag ----------
+     A note to staff, not a message: nothing is sent when it's
+     ticked. It rides along in the saved/downloaded file and
+     prints with the page, so it surfaces at the check-in. The
+     copy says so plainly rather than implying someone has been
+     notified. */
+  function renderHelpFlag(){
+    $('needHelp').checked = state.needHelp;
+    $('helpFlag').classList.toggle('is-on', state.needHelp);
+    $('helpSub').innerHTML = state.needHelp
+      ? 'Noted on this page \u2014 bring it up at your next check-in, or print this page and hand it over. Nothing was sent just now, so if you would rather not wait, email us and we will set up a time.'
+      : 'Tick this and we will go through them with you at your next check-in. Plenty of people do &mdash; working out what a plate really costs is one of the harder parts.';
+  }
+  $('needHelp').addEventListener('change', e => {
+    state.needHelp = e.target.checked;
+    renderHelpFlag();
+  });
+
+  /* ---------- checklists ---------- */
+  function renderChecklist(containerId, cycKey){
+    const el = $(containerId);
+    el.innerHTML = CHECK_ITEMS.map(item => {
+      const rec = state[cycKey][item.key];
+      return '<label class="check-item' + (rec.checked ? ' is-done' : '') + '">' +
+        '<input type="checkbox" data-cyc="' + cycKey + '" data-key="' + item.key + '"' + (rec.checked ? ' checked' : '') + '>' +
+        '<span class="ci-body">' +
+          '<span class="ci-label">' + item.label + '</span>' +
+          '<span class="ci-sub">' + item.sub + '</span>' +
+          '<span class="ci-date"><span>Done on</span>' +
+            '<input type="date" data-cyc="' + cycKey + '" data-datekey="' + item.key + '" value="' + rec.date + '">' +
+          '</span>' +
+        '</span></label>';
+    }).join('');
+
+    el.querySelectorAll('input[type="checkbox"]').forEach(box => {
+      box.addEventListener('change', () => {
+        const rec = state[box.dataset.cyc][box.dataset.key];
+        rec.checked = box.checked;
+        if (box.checked && !rec.date) rec.date = todayISO();
+        renderChecklist(containerId, cycKey);
+        renderStatus();
+      });
+    });
+    el.querySelectorAll('input[type="date"]').forEach(inp => {
+      // a click inside the surrounding <label> would otherwise toggle the checkbox
+      inp.addEventListener('click', e => e.stopPropagation());
+      inp.addEventListener('input', () => {
+        state[inp.dataset.cyc][inp.dataset.datekey].date = inp.value;
+      });
+    });
+  }
+  const cycleAll = k => CHECK_ITEMS.every(i => state[k][i.key].checked);
+  const cycleAny = k => CHECK_ITEMS.some(i => state[k][i.key].checked);
+
+  /* ---------- status ---------- */
+  function renderStatus(){
+    const head = $('statusHead'), body = $('statusBody');
+    if (cycleAll('c2')){
+      head.textContent = 'You have done it twice \u2014 this is a real business now';
+      body.textContent = 'Two full cycles, start to finish, on your own terms. That is the proof. Keep the next one moving, and talk to us about what comes next.';
+    } else if (cycleAny('c2')){
+      head.textContent = 'You are into your second cycle';
+      body.textContent = 'This is the round that shows the first one was not a fluke. Keep going.';
+    } else if (cycleAll('c1')){
+      head.textContent = 'First cycle done';
+      body.textContent = 'You made it, handed it over, and got paid. That is the hard part. Now let us set up the next one.';
+    } else if (cycleAny('c1')){
+      head.textContent = 'You are moving';
+      body.textContent = 'Work the list below in whatever order fits your week. Every box is real progress.';
+    } else {
+      head.textContent = 'Just getting started';
+      body.textContent = 'Everybody starts here. Work down the list below whenever you are ready. There is no clock running.';
+    }
+  }
+
+  /* ---------- leads ---------- */
+  function renderLeads(){
+    $('leadRows').innerHTML = state.leads.map(l =>
+      '<div class="lead-row" data-id="' + l.id + '">' +
+        '<input type="text" placeholder="Name" data-f="name" value="' + esc(l.name) + '">' +
+        '<input type="text" placeholder="Phone or email" data-f="contact" value="' + esc(l.contact) + '">' +
+        '<input type="text" placeholder="What they want" data-f="item" value="' + esc(l.item) + '">' +
+        '<select data-f="status">' +
+          '<option value="interested"' + (l.status==='interested'?' selected':'') + '>Interested</option>' +
+          '<option value="booked"' + (l.status==='booked'?' selected':'') + '>Ordered</option>' +
+          '<option value="paid"' + (l.status==='paid'?' selected':'') + '>Paid</option>' +
+        '</select>' +
+        '<button type="button" class="rm-lead-btn" title="Remove">\u00d7</button>' +
+      '</div>').join('');
+
+    $('leadRows').querySelectorAll('.lead-row').forEach(row => {
+      const lead = state.leads.find(l => l.id === row.dataset.id);
+      row.querySelectorAll('input,select').forEach(inp => {
+        inp.addEventListener('input', () => { lead[inp.dataset.f] = inp.value; });
+      });
+      row.querySelector('.rm-lead-btn').addEventListener('click', () => {
+        state.leads = state.leads.filter(l => l.id !== row.dataset.id);
+        if (!state.leads.length) state.leads.push(blankLead());
+        renderLeads();
+      });
+    });
+  }
+  $('btnAddLead').addEventListener('click', () => { state.leads.push(blankLead()); renderLeads(); });
+
+  /* ---------- timeline ---------- */
+  function renderTimeline(){
+    state.onboardDate = $('onboardDate').value;
+    let daysSince = null;
+    if (state.onboardDate){
+      const start = new Date(state.onboardDate + 'T00:00:00');
+      daysSince = Math.floor((new Date() - start) / 86400000);
+    }
+    let nextAssigned = false;
+    $('timeline').innerHTML = CADENCE.map(step => {
+      let cls = '', flag = '';
+      if (daysSince !== null){
+        if (daysSince >= step.day) cls = 'is-past';
+        else if (!nextAssigned){ cls = 'is-next'; flag = '<span class="tl-flag">Coming up</span>'; nextAssigned = true; }
+      }
+      return '<div class="tl-item ' + cls + '"><div class="tl-dot"></div><div>' +
+        '<div class="tl-day">Day ' + step.day + '</div>' +
+        '<div class="tl-goal">' + step.goal + flag + '</div>' +
+        '<div class="tl-body">' + step.body + '</div>' +
+        '</div></div>';
+    }).join('');
+  }
+  $('onboardDate').addEventListener('input', renderTimeline);
+  $('business').addEventListener('input', e => { state.business = e.target.value; });
+  $('cycleDef').addEventListener('input', e => { state.cycleDef = e.target.value; });
+
+  /* ---------- serialize ---------- */
+  function collectState(){
+    return {
+      _tool:'first-order-sprint', fileVersion:1,
+      business:state.business, model:state.model, cycleDef:state.cycleDef, onboardDate:state.onboardDate,
+      price:state.price, cost:state.cost, kitchenCost:state.kitchenCost, ordersSecured:state.ordersSecured,
+      needHelp:state.needHelp,
+      leads:state.leads, c1:state.c1, c2:state.c2
+    };
+  }
+
+  function applyFullState(data){
+    if (!data || typeof data !== 'object' || Array.isArray(data)) throw new Error('shape');
+    state.business = data.business || '';
+    state.model = MODEL_HINTS[data.model] ? data.model : 'pickup';
+    state.cycleDef = data.cycleDef || '';
+    state.onboardDate = data.onboardDate || '';
+    state.price = data.price == null ? null : data.price;
+    state.cost = data.cost == null ? null : data.cost;
+    state.kitchenCost = data.kitchenCost == null ? null : data.kitchenCost;
+    state.ordersSecured = data.ordersSecured || 0;
+    state.needHelp = !!data.needHelp;
+    state.leads = (Array.isArray(data.leads) && data.leads.length) ? data.leads : [blankLead()];
+    CHECK_ITEMS.forEach(i => {
+      state.c1[i.key] = (data.c1 && data.c1[i.key]) || { checked:false, date:'' };
+      state.c2[i.key] = (data.c2 && data.c2[i.key]) || { checked:false, date:'' };
+    });
+    fullRender();
+  }
+
+  /* ---------- pulling numbers out of a saved Food Cost card ---------- */
+  function applyCostCard(data, sourceLabel){
+    const got = [];
+    if (data.price != null && data.price !== ''){ $('price').value = data.price; got.push('price'); }
+
+    // costPerUnit only exists once the Food Cost tool stashes its computed
+    // per-unit cost (see build notes). Read it when present; never re-derive.
+    if (data.costPerUnit != null && data.costPerUnit !== ''){
+      $('cost').value = Number(data.costPerUnit).toFixed(2);
+      got.push('cost per order');
+    }
+
+    const rate = data.kitchenRateSel === 'custom'
+      ? Number(data.kitchenRateCustom)
+      : Number(data.kitchenRateSel != null ? data.kitchenRateSel : data.kitchenRate);
+    const hrs = Number(data.kitchenHours);
+    if (hrs > 0 && rate > 0){
+      $('kitchenCost').value = (hrs * rate).toFixed(2);
+      got.push('kitchen session cost');
+    }
+
+    if (data.productName && !$('cycleDef').value){
+      $('cycleDef').value = 'Selling: ' + data.productName;
+      state.cycleDef = $('cycleDef').value;
+    }
+
+    computeGoal();
+
+    if (!got.length){
+      note('That saved ' + sourceLabel + ' did not have numbers we could use here. You can type them in below.', true);
+      return;
+    }
+    const missingCost = got.indexOf('cost per order') === -1;
+    note('Brought over your ' + got.join(', ') + ' from ' + sourceLabel + '.' +
+      (missingCost ? ' Your cost per order is not saved in that tool yet, so open it to check the figure and type it in below.' : ''),
+      missingCost);
+  }
+
+  function applyPreSell(data){
+    const s = data.settings || {};
+    if (s.price != null) $('price').value = s.price;
+    if (s.cost != null) $('cost').value = s.cost;
+    if (s.kitchenCost != null) $('kitchenCost').value = s.kitchenCost;
+    const orders = Array.isArray(data.orders) ? data.orders : [];
+    const committed = orders.filter(o => o.paid && o.paid !== 'unpaid').length;
+    $('ordersSecured').value = committed;
+    if (s.offerName && !$('cycleDef').value){
+      $('cycleDef').value = 'Selling: ' + s.offerName;
+      state.cycleDef = $('cycleDef').value;
+    }
+    computeGoal();
+    note('Brought over your numbers and ' + committed + ' confirmed order' +
+      (committed === 1 ? '' : 's') + ' from your Pre-Sell Order Form.');
+  }
+
+  /* ---------- opening a file ---------- */
+  function handleFile(file){
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try { data = JSON.parse(reader.result); }
+      catch(e){ note('That file could not be read. Make sure it is one you downloaded from an AFW tool.', true); return; }
+
+      try {
+        if (data._tool === 'first-order-sprint'){ applyFullState(data); note('Opened your saved progress.'); }
+        else if (data._tool === 'pre-sell-order-form'){ applyPreSell(data); }
+        else if (data.ingredients || data.productName){ applyCostCard(data, 'that cost card'); }
+        else { note('That does not look like a file from one of the AFW tools. Try downloading a fresh one.', true); }
+      } catch(e){
+        note('That file could not be opened. Try downloading a fresh one.', true);
+      }
+    };
+    reader.readAsText(file);
+  }
+  $('fileImport').addEventListener('change', e => {
+    if (e.target.files[0]) handleFile(e.target.files[0]);
+    e.target.value = '';
+  });
+  $('btnImport').addEventListener('click', () => $('fileImport').click());
+  $('btnImport2').addEventListener('click', () => $('fileImport').click());
+
+  /* ---------- cloud: pull a saved cost card from the member's account ---------- */
+  function niceDate(iso){
+    try { return new Date(iso).toLocaleDateString(undefined, {month:'short', day:'numeric', year:'numeric'}); }
+    catch(e){ return ''; }
+  }
+
+  $('btnCloud').addEventListener('click', () => {
+    const list = $('pickerList');
+    list.classList.remove('is-shown');
+    list.innerHTML = '';
+
+    if (typeof AFWCloud === 'undefined' || !AFWCloud.isConfigured()){
+      note('Saving to an account is not switched on yet. Use \u201COpen a file from my computer\u201D instead.', true);
+      return;
+    }
+    if (AFWCloud.status() !== 'in'){
+      note('Sign in first \u2014 there is a sign-in box at the bottom of this page \u2014 then try this again.', true);
+      return;
+    }
+
+    note('Looking for your saved cost cards\u2026');
+    AFWCloud.list('food-cost').then(rows => {
+      if (!rows.length){
+        note('You have not saved anything in the Food Cost & Pricing tool yet. Once you do, it will show up here.', true);
+        return;
+      }
+      note('Pick which one to use:');
+      list.innerHTML = rows.map(r =>
+        '<div class="picker-row"><div><b>' + esc(r.title) + '</b>' +
+        '<span>Saved ' + esc(niceDate(r.updated_at)) + '</span></div>' +
+        '<button type="button" class="btn-ghost btn-small" data-pick="' + esc(r.id) + '">Use this one</button></div>'
+      ).join('');
+      list.classList.add('is-shown');
+
+      list.querySelectorAll('[data-pick]').forEach(b => {
+        b.addEventListener('click', () => {
+          AFWCloud.get(b.getAttribute('data-pick')).then(row => {
+            list.classList.remove('is-shown');
+            applyCostCard(row.data || {}, '\u201C' + row.title + '\u201D');
+          }).catch(() => {
+            note('That one could not be opened. Try another, or type the numbers in below.', true);
+          });
+        });
+      });
+    }).catch(e => {
+      note((e && e.message) || 'Could not reach your saved work just now. You can type the numbers in below.', true);
+    });
+  });
+
+  /* ---------- download / print ---------- */
+  $('btnExport').addEventListener('click', () => {
+    const slug = (state.business || 'my-first-sales').toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+    const blob = new Blob([JSON.stringify(collectState(), null, 2)], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'AFW_first-sales_' + slug + '_' + todayISO() + '.json';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  });
+  $('btnPrint').addEventListener('click', () => window.print());
+
+  /* ---------- render everything ---------- */
+  function fullRender(){
+    $('business').value = state.business;
+    modelChips.forEach(c => c.setAttribute('aria-pressed', c.dataset.model === state.model ? 'true' : 'false'));
+    $('cycleHint').textContent = MODEL_HINTS[state.model] || '';
+    $('cycleDef').value = state.cycleDef;
+    $('onboardDate').value = state.onboardDate;
+    $('price').value = state.price == null ? '' : state.price;
+    $('cost').value = state.cost == null ? '' : state.cost;
+    $('kitchenCost').value = state.kitchenCost == null ? '' : state.kitchenCost;
+    $('ordersSecured').value = state.ordersSecured || '';
+    renderHelpFlag();
+    computeGoal();
+    renderChecklist('c1List', 'c1');
+    renderChecklist('c2List', 'c2');
+    renderStatus();
+    renderLeads();
+    renderTimeline();
+  }
+
+  /* ---------- init ---------- */
+  state.leads = [blankLead()];
+  fullRender();
+
+  /* ---- AFW Cloud: optional save to account (additive only) ----
+     Uses mountToolBar, the API this version of afw-cloud.js
+     actually exports. See build notes re: AFWCloud.init(). */
+  if (typeof AFWCloud !== 'undefined' && typeof AFWCloud.mountToolBar === 'function'){
+    AFWCloud.mountToolBar('#afw-toolbar', {
+      tool:         'first-order-sprint',   /* must match the key in index.html */
+      label:        'progress page',
+      serialize:    () => collectState(),
+      deserialize:  (data) => applyFullState(data),
+      suggestTitle: () => state.business || 'My path to first sales'
+    });
+  }
+})();
+</script>
+</body>
+</html>
