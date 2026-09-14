@@ -32,6 +32,7 @@ self-contained HTML file that works with or without an account.
    | `hours-that-pay`    | hours-that-pay.html   | public |
    | `food-cost-builder` | (pending)             | member |
    | `sop-builder`       | (pending)             | member |
+   | `prep-list`         | afw-prep-list-builder.html | member |
    | `readiness-inventory` | (pending)           | member |
    | `first-order-sprint`  | (future)            | member |
 

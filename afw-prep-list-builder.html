@@ -1,0 +1,1332 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akron Food Works — Prep List Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  ============================================================
+  AKRON FOOD WORKS — PREP LIST BUILDER
+  ============================================================
+  BUILD NOTES (staff / maintainer)
+
+  · Design system matches the Tool Hub / SOP Builder / Pre-Sell
+    Order Form family: Fraunces (display) + Hanken Grotesk
+    (body); cream / forest green / amber / gold palette.
+    :root vars copied verbatim from afw-pre-sell-order-form.html.
+
+  · PURPOSE: the Roadmap Week 2 line — "Bring a prep list: every
+    item, every quantity, in the order you'll make them." This
+    tool is the JOIN between two things members already have:
+        orders  (how many to make)  × recipe (what one batch takes)
+        →  scaled, sequenced kitchen checklist
+    It is the last step before a booked session, so it also sums
+    estimated prep time against the hours they actually booked —
+    the Roadmap's "build setup and cleanup INSIDE your booked
+    time so you're never rushed."
+
+  · IMPORTS — one button, sniffed by shape (see detectImport()).
+    All four are files the member already has from our own tools:
+      _tool:"pre-sell-order-form"  → tallies qty per item name.
+                                     Counts COMMITTED orders only
+                                     (deposit/paid) — a "maybe" is
+                                     not an order, same rule as the
+                                     Roadmap and the order form.
+      schema:"afw-sop-v1"          → one production SOP → recipe
+                                     (yield + ingredients).
+      schema:"afw-binder-v1"       → many SOPs at once.
+      fileVersion + ingredients    → Food Cost & Pricing card.
+                                     uqty/uunit are per BATCH and
+                                     yieldQty is units per batch,
+                                     so it scales like any recipe.
+                                     packaging[].used is also per
+                                     batch (see packCost there).
+      schema:"afw-prep-list-v1"    → our own file, reloaded.
+
+  · SCALING: batches = qty to make ÷ yield per batch. Ingredient
+    amounts are free text in the SOP builder ("1 1/2"), so
+    parseAmount() handles whole / decimal / mixed fractions and
+    anything it can't parse is passed through verbatim with the
+    multiplier shown next to it — never silently dropped.
+
+  · PULL LIST combines identical ingredient+unit pairs only
+    (after normalizing "lbs"→"lb" etc). It deliberately does NOT
+    convert across units — a member who typed cups shouldn't get
+    quarts back. Same ingredient in two units shows two lines.
+
+  · DATA MODEL: no browser storage (localStorage intentionally
+    avoided — same reasoning as the SOP Builder and order form:
+    doesn't survive artifact/preview contexts or a host move).
+    In-page state is the working copy; Export JSON is the
+    member's own source of truth; cloud save (afw-cloud.js,
+    tool id "prep-list") is the signed-in convenience.
+
+  · PRINT builds a clean sheet into #print-sheet rather than
+    printing the live form — the kitchen copy should be a
+    checklist, not a page of input boxes. Same pattern the SOP
+    Builder uses for printAllBinder().
+
+  · No external dependencies beyond Google Fonts.
+  ============================================================
+-->
+<style>
+  :root{
+    --cream:#FBF6EC;
+    --paper:#FFFDF8;
+    --ink:#23372B;
+    --ink-soft:#4A5A4E;
+    --ink-faint:#7C897F;
+    --green:#2C5440;
+    --green-deep:#1E3A2D;
+    --amber:#C8612E;
+    --amber-soft:#E89B5A;
+    --gold:#D9A441;
+    --line:#E2D9C6;
+    --good-bg:#E7EFE5;
+    --warn-bg:#F7EDD2;
+    --shadow:0 18px 40px -22px rgba(30,58,45,.45);
+    --display:'Fraunces',Georgia,serif;
+    --body:'Hanken Grotesk',system-ui,sans-serif;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--body);color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 85% -8%, rgba(217,164,65,.16), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(44,84,64,.12), transparent 55%),
+      var(--cream);
+    min-height:100vh;line-height:1.55;padding:0 20px 80px;
+  }
+  .wrap{max-width:980px;margin:0 auto}
+  button{font-family:inherit;cursor:pointer}
+  input,select,textarea{font-family:inherit;font-size:15px}
+  input:focus-visible,select:focus-visible,button:focus-visible,summary:focus-visible{
+    outline:2.5px solid var(--green);outline-offset:2px
+  }
+
+  /* header */
+  header{padding:36px 0 6px}
+  .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .brand-name{font-family:var(--display);font-weight:600;font-size:1.1rem;color:var(--green-deep)}
+  .brand-sub{font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .eyebrow{font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);font-weight:700;margin:26px 0 10px}
+  h1{font-family:var(--display);font-weight:500;font-size:clamp(1.8rem,5vw,2.6rem);line-height:1.06;letter-spacing:-.01em;max-width:24ch}
+  h1 em{font-style:italic;color:var(--green)}
+  .lede{margin-top:12px;font-size:1rem;color:var(--ink-soft);max-width:64ch}
+
+  /* cards */
+  .card{
+    background:var(--paper);border:1px solid var(--line);border-radius:16px;
+    padding:22px 24px;margin-top:22px;box-shadow:var(--shadow);
+  }
+  .card h2{font-family:var(--display);font-weight:600;font-size:1.15rem;color:var(--green-deep);margin-bottom:4px}
+  .card .sub{font-size:.86rem;color:var(--ink-soft);margin-bottom:16px;max-width:66ch}
+
+  /* fields */
+  .field label{display:block;font-size:.78rem;font-weight:700;color:var(--green-deep);margin-bottom:5px}
+  .field .hint{display:block;font-size:.74rem;font-weight:400;color:var(--ink-faint);margin-top:3px}
+  .field input,.field select{
+    width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:9px;
+    background:var(--cream);color:var(--ink);
+  }
+  .field input::placeholder{color:var(--ink-faint)}
+  .settings-grid{display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(160px,1fr))}
+
+  /* time readout */
+  .time-readout{
+    margin-top:18px;padding:16px 18px;border-radius:12px;background:var(--good-bg);
+    border:1px solid rgba(44,84,64,.18);
+  }
+  .time-readout.is-empty{background:var(--cream);border-color:var(--line)}
+  .time-readout.is-over{background:var(--warn-bg);border-color:rgba(200,97,46,.28)}
+  .time-readout .big{font-family:var(--display);font-size:1.3rem;font-weight:600;color:var(--green-deep)}
+  .time-readout p{font-size:.86rem;color:var(--ink-soft);margin-top:4px}
+  .bar-track{margin-top:10px;height:8px;border-radius:99px;background:rgba(35,55,43,.12);overflow:hidden}
+  .bar-fill{height:100%;background:var(--green);border-radius:99px;transition:width .2s}
+  .bar-fill.over{background:var(--amber)}
+
+  /* import */
+  .import-row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+  .import-note{
+    margin-top:14px;font-size:.86rem;padding:11px 14px;border-radius:10px;
+    background:var(--good-bg);border:1px solid rgba(44,84,64,.18);color:var(--ink-soft);
+  }
+  .import-note.bad{background:var(--warn-bg);border-color:rgba(200,97,46,.28)}
+  .import-note b{color:var(--green-deep)}
+  .sources{margin-top:16px;display:grid;gap:8px;font-size:.84rem;color:var(--ink-soft)}
+  .sources div{display:flex;gap:9px;align-items:baseline}
+  .sources .k{
+    font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--green);background:rgba(44,84,64,.08);border-radius:6px;padding:3px 8px;white-space:nowrap;
+  }
+
+  /* item cards */
+  .item-list{display:flex;flex-direction:column;gap:14px;margin-top:6px}
+  .item-card{
+    border:1px solid var(--line);border-radius:12px;background:var(--cream);
+    padding:14px 16px 16px;page-break-inside:avoid;break-inside:avoid;
+  }
+  .item-top{
+    display:flex;justify-content:space-between;align-items:center;gap:10px;margin-bottom:10px;
+  }
+  .item-seq{
+    font-family:var(--display);font-weight:600;font-size:1rem;color:var(--green-deep);
+    display:flex;align-items:center;gap:9px;
+  }
+  .stage-pill{
+    font-size:.64rem;font-weight:700;letter-spacing:.09em;text-transform:uppercase;
+    padding:3px 9px;border-radius:99px;border:1px solid transparent;
+  }
+  .stage-prep{color:var(--green);background:rgba(44,84,64,.10);border-color:rgba(44,84,64,.22)}
+  .stage-cook{color:var(--amber);background:rgba(200,97,46,.10);border-color:rgba(200,97,46,.24)}
+  .stage-cool{color:#3B5C74;background:rgba(59,92,116,.10);border-color:rgba(59,92,116,.22)}
+  .stage-package{color:#6B4E9E;background:rgba(107,78,158,.10);border-color:rgba(107,78,158,.22)}
+  .item-tools{display:flex;gap:4px;align-items:center}
+  .icon-btn{
+    border:1px solid var(--line);background:var(--paper);color:var(--green);
+    font-weight:700;font-size:.85rem;line-height:1;padding:6px 9px;border-radius:7px;
+  }
+  .icon-btn:hover:not(:disabled){background:var(--good-bg);border-color:var(--green)}
+  .icon-btn:disabled{opacity:.3;cursor:default}
+  .rm-btn{
+    border:none;background:transparent;color:var(--amber);font-weight:700;font-size:.8rem;
+    padding:5px 9px;border-radius:7px;
+  }
+  .rm-btn:hover{background:var(--warn-bg)}
+
+  .item-grid{display:grid;grid-template-columns:2fr 1fr 1fr 1fr;gap:10px}
+  @media (max-width:640px){.item-grid{grid-template-columns:1fr 1fr}}
+  .item-grid .field label{font-size:.72rem;margin-bottom:4px}
+  .item-grid input,.item-grid select{
+    width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:8px;
+    background:var(--paper);font-size:.9rem;
+  }
+  .ordered-hint{display:block;font-size:.7rem;color:var(--ink-faint);margin-top:3px;font-style:italic}
+
+  /* recipe block */
+  details.recipe{margin-top:12px;border-top:1px dashed var(--line);padding-top:10px}
+  details.recipe > summary{
+    list-style:none;cursor:pointer;display:flex;align-items:center;gap:8px;
+    font-size:.74rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-soft);
+  }
+  details.recipe > summary::-webkit-details-marker{display:none}
+  details.recipe > summary::before{content:"▸";color:var(--green);font-size:.9rem}
+  details.recipe[open] > summary::before{content:"▾"}
+  .recipe-body{margin-top:12px}
+  .yield-line{
+    display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:.86rem;color:var(--ink-soft);
+    background:var(--paper);border:1px solid var(--line);border-radius:9px;padding:9px 12px;
+  }
+  .yield-line input{
+    padding:6px 8px;border:1px solid var(--line);border-radius:7px;background:var(--cream);font-size:.88rem;
+  }
+  .yield-line input.qty{width:78px}
+  .yield-line input.unit{width:118px}
+  .ing-head{
+    display:grid;grid-template-columns:1fr 84px 96px 30px;gap:8px;margin:12px 0 5px;
+    font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);
+  }
+  @media (max-width:640px){.ing-head{display:none}}
+  .ing-row{display:grid;grid-template-columns:1fr 84px 96px 30px;gap:8px;margin-bottom:6px;align-items:center}
+  @media (max-width:640px){.ing-row{grid-template-columns:1fr 70px 80px 28px}}
+  .ing-row input{padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);font-size:.88rem;min-width:0}
+  .rm-ing-btn{
+    border:none;background:transparent;color:var(--amber);font-weight:700;font-size:1rem;
+    line-height:1;padding:5px;border-radius:6px;
+  }
+  .rm-ing-btn:hover{background:var(--warn-bg)}
+  .add-ing-btn{
+    margin-top:2px;padding:5px 11px;border-radius:7px;border:1.5px dashed var(--green);
+    background:transparent;color:var(--green);font-size:.78rem;font-weight:700;
+  }
+  .add-ing-btn:hover{background:var(--good-bg)}
+
+  /* scaled readout */
+  .scale-out{margin-top:12px;border-radius:10px;background:var(--paper);border:1px solid var(--line);padding:12px 14px}
+  .scale-head{
+    font-family:var(--display);font-size:1rem;font-weight:600;color:var(--green-deep);margin-bottom:2px;
+  }
+  .scale-sub{font-size:.8rem;color:var(--ink-soft)}
+  .scale-sub.nudge{color:var(--amber);font-weight:600}
+  .scale-table{width:100%;border-collapse:collapse;margin-top:10px;font-size:.88rem}
+  .scale-table th{
+    text-align:left;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-faint);padding:0 0 5px;border-bottom:1px solid var(--line);
+  }
+  .scale-table th.num,.scale-table td.num{text-align:right;white-space:nowrap}
+  .scale-table td{padding:5px 0;border-bottom:1px dotted var(--line)}
+  .scale-table td.need{font-weight:700;color:var(--green-deep)}
+  .scale-table tr:last-child td{border-bottom:none}
+  .scale-table .grp{
+    font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-faint);padding-top:10px;
+  }
+  .verbatim{color:var(--amber);font-style:italic}
+  .empty-note{font-size:.86rem;color:var(--ink-faint);font-style:italic;padding:4px 0}
+
+  /* pull list */
+  .pull-table{width:100%;border-collapse:collapse;font-size:.92rem;margin-top:6px}
+  .pull-table th{
+    text-align:left;font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
+    color:var(--ink-faint);padding:0 0 6px;border-bottom:1px solid var(--line);
+  }
+  .pull-table th.num,.pull-table td.num{text-align:right;white-space:nowrap}
+  .pull-table td{padding:7px 0;border-bottom:1px dotted var(--line)}
+  .pull-table td.amt{font-weight:700;color:var(--green-deep)}
+  .pull-table .from{font-size:.76rem;color:var(--ink-faint)}
+  .pull-group{
+    font-family:var(--display);font-size:.95rem;font-weight:600;color:var(--green-deep);
+    padding-top:14px !important;
+  }
+
+  .add-row{
+    margin-top:14px;padding:9px 16px;border-radius:9px;border:1.5px dashed var(--green);
+    background:transparent;color:var(--green);font-weight:700;font-size:.88rem;
+  }
+  .add-row:hover{background:var(--good-bg)}
+  .row-tools{display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin-top:14px}
+  .link-btn{
+    background:transparent;border:none;color:var(--amber);font-weight:700;font-size:.84rem;
+    padding:6px 2px;text-decoration:underline;
+  }
+
+  /* summary strip */
+  .summary{
+    display:grid;gap:14px;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));
+    margin-top:18px;padding-top:18px;border-top:1px solid var(--line);
+  }
+  .stat .num{font-family:var(--display);font-size:1.5rem;font-weight:600;color:var(--green-deep)}
+  .stat .lbl{font-size:.76rem;color:var(--ink-soft);margin-top:2px}
+
+  /* actions */
+  .actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:22px}
+  .actions button{
+    padding:10px 18px;border-radius:10px;font-weight:700;font-size:.9rem;border:1.5px solid var(--green);
+  }
+  .btn-primary{background:var(--green);color:var(--cream)}
+  .btn-primary:hover{background:var(--green-deep)}
+  .btn-ghost{background:transparent;color:var(--green)}
+  .btn-ghost:hover{background:var(--good-bg)}
+
+  footer{
+    margin-top:56px;padding-top:22px;border-top:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;
+    font-size:.82rem;color:var(--ink-soft);
+  }
+  footer .fbrand{font-family:var(--display);font-weight:600;color:var(--green-deep);font-size:.9rem}
+
+  /* ---------- print sheet (built on demand, see buildPrintSheet) ---------- */
+  #print-sheet{display:none}
+  .ps-head{border-bottom:2px solid var(--green-deep);padding-bottom:10px;margin-bottom:16px}
+  .ps-brand{font-size:.66rem;letter-spacing:.18em;text-transform:uppercase;font-weight:700;color:var(--green)}
+  .ps-title{font-family:var(--display);font-size:1.6rem;font-weight:600;color:var(--green-deep);margin-top:4px}
+  .ps-meta{font-size:.84rem;color:var(--ink-soft);margin-top:4px;display:flex;gap:18px;flex-wrap:wrap}
+  .ps-section{
+    font-family:var(--display);font-size:1.1rem;font-weight:600;color:var(--green-deep);
+    margin:20px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--line);
+  }
+  .ps-item{margin-bottom:14px;page-break-inside:avoid;break-inside:avoid}
+  .ps-item-head{display:flex;align-items:baseline;gap:8px;font-size:1.02rem}
+  .ps-box{
+    display:inline-block;width:13px;height:13px;border:1.5px solid var(--green-deep);
+    border-radius:3px;flex:none;position:relative;top:1px;
+  }
+  .ps-item-name{font-weight:700;color:var(--green-deep)}
+  .ps-item-qty{font-weight:700}
+  .ps-item-meta{font-size:.8rem;color:var(--ink-soft)}
+  .ps-ings{margin:5px 0 0 25px;display:flex;flex-wrap:wrap;gap:4px 18px}
+  .ps-ing{font-size:.86rem;display:flex;align-items:baseline;gap:6px}
+  .ps-ing b{font-weight:700}
+  .ps-note{margin:4px 0 0 25px;font-size:.82rem;font-style:italic;color:var(--ink-soft)}
+  .ps-pull{width:100%;border-collapse:collapse;font-size:.9rem}
+  .ps-pull td{padding:4px 0;border-bottom:1px dotted #bbb}
+  .ps-pull td.num{text-align:right;font-weight:700;white-space:nowrap}
+  .ps-pull td.box{width:22px}
+  .ps-pull td.ps-grp{
+    font-weight:700;font-size:.72rem;letter-spacing:.08em;text-transform:uppercase;
+    color:var(--green-deep);padding-top:10px;border-bottom:1px solid var(--line);
+  }
+  .ps-foot{margin-top:22px;padding-top:8px;border-top:1px solid var(--line);font-size:.72rem;color:var(--ink-faint)}
+  .ps-blank{font-size:.86rem;color:var(--ink-soft);font-style:italic}
+
+  @media print{
+    .no-print{display:none !important}
+    body{padding:0;background:#fff}
+    body.printing .wrap{display:none}
+    body.printing #print-sheet{display:block;padding:0}
+    .card{box-shadow:none;border:1px solid #999}
+    #print-sheet{color:#000}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header>
+    <div class="brand">
+      <span class="brand-name">Akron Food Works</span>
+      <span class="brand-sub">a program of The Well CDC</span>
+    </div>
+    <p class="eyebrow">Prep List Builder</p>
+    <h1>Walk in with a <em>plan</em>, not a guess</h1>
+    <p class="lede">Roadmap Week 2, right before you book: <em>bring a prep list — every item, every quantity, in the order you'll make them.</em> Pull your orders and your recipes in here, and this does the batch math, the shopping pull, and the running order for you.</p>
+  </header>
+
+  <div id="afw-toolbar" class="no-print" style="margin:18px 0 0"></div>
+
+  <section class="card">
+    <h2>This prep session</h2>
+    <p class="sub">Fill in what you know. The time check at the bottom compares your list against the hours you actually booked — setup and cleanup included, so you're never the person still scrubbing at the end of someone else's slot.</p>
+    <div class="settings-grid">
+      <div class="field">
+        <label for="sessionName">What you're prepping for</label>
+        <input type="text" id="sessionName" placeholder="e.g., Friday pickup">
+      </div>
+      <div class="field">
+        <label for="prepDate">Prep day</label>
+        <input type="text" id="prepDate" placeholder="e.g., Thursday, Mar 6">
+      </div>
+      <div class="field">
+        <label for="pickupDay">Pickup / service day</label>
+        <input type="text" id="pickupDay" placeholder="e.g., Friday 4–6 PM">
+      </div>
+      <div class="field">
+        <label for="hoursBooked">Hours booked<span class="hint">Your Food Corridor slot</span></label>
+        <input type="number" id="hoursBooked" min="0" step="0.25" placeholder="4">
+      </div>
+      <div class="field">
+        <label for="setupMin">Setup + cleanup (min)<span class="hint">Inside your booked time</span></label>
+        <input type="number" id="setupMin" min="0" step="5" placeholder="30">
+      </div>
+    </div>
+
+    <div class="time-readout is-empty" id="timeReadout">
+      <div class="big" id="timeBig">Add hours booked and minutes per item to see your time check.</div>
+      <p id="timeSub"></p>
+      <div class="bar-track"><div class="bar-fill" id="timeBar" style="width:0%"></div></div>
+    </div>
+  </section>
+
+  <section class="card no-print">
+    <h2>Start from what you already have</h2>
+    <p class="sub">One button — it reads the file and figures out what it is. Orders set your quantities; a cost card or SOP brings the recipe that gets scaled. You can also just type everything in by hand below.</p>
+    <div class="import-row">
+      <button type="button" class="btn-primary" id="btnImport">Import a file</button>
+      <input type="file" id="fileImport" accept=".json,application/json" style="display:none">
+      <span class="empty-note">Nothing to import? Skip this and add items below.</span>
+    </div>
+    <div class="import-note" id="importNote" hidden></div>
+    <div class="sources">
+      <div><span class="k">Orders</span><span>Pre-Sell Order Form export — tallies how many of each item you owe people.</span></div>
+      <div><span class="k">Recipe</span><span>Food Cost &amp; Pricing card — ingredients per batch and units per batch.</span></div>
+      <div><span class="k">Recipe</span><span>SOP &amp; Recipe Card Builder export — one production SOP or a whole binder.</span></div>
+      <div><span class="k">Reload</span><span>A prep list you exported from here before.</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>What you're making</h2>
+    <p class="sub">In the order you'll make them — use the arrows to move things around, or group by stage so everything that needs to cool is together. Tick items off as you go; the checkmarks save with the file.</p>
+    <div class="item-list" id="itemList"></div>
+    <button type="button" class="add-row no-print" id="btnAddItem">+ Add item</button>
+    <div class="row-tools no-print">
+      <button type="button" class="link-btn" id="btnSortStage">Group by stage (prep → cook → cool → package)</button>
+    </div>
+
+    <div class="summary">
+      <div class="stat"><div class="num" id="statItems">0</div><div class="lbl">Items to make</div></div>
+      <div class="stat"><div class="num" id="statUnits">0</div><div class="lbl">Total units</div></div>
+      <div class="stat"><div class="num" id="statBatches">0</div><div class="lbl">Batches to run</div></div>
+      <div class="stat"><div class="num" id="statTime">—</div><div class="lbl">Estimated prep time</div></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Pull list</h2>
+    <p class="sub">Everything above, combined — walk the cooler and the dry rack once with this instead of hunting for one ingredient at a time. Same ingredient measured two ways stays on two lines; we don't convert your units behind your back.</p>
+    <div id="pullList"></div>
+  </section>
+
+  <div class="actions no-print">
+    <button type="button" class="btn-primary" id="btnPrint">Print my prep list</button>
+    <button type="button" class="btn-ghost" id="btnExport">Export JSON</button>
+    <button type="button" class="btn-ghost" id="btnImport2">Import JSON</button>
+  </div>
+
+  <footer>
+    <span class="fbrand">Akron Food Works</span>
+    <span>Create · Incubate · Elevate</span>
+    <span>647 E. Market St., Akron, Ohio</span>
+  </footer>
+</div>
+
+<!-- print target: lives outside .wrap so hiding the app for print doesn't hide it too -->
+<div id="print-sheet"></div>
+
+<script>
+/* ===================== STATE ===================== */
+const SESSION_FIELDS = ['sessionName','prepDate','pickupDay','hoursBooked','setupMin'];
+const NUMERIC_SESSION = ['hoursBooked','setupMin'];
+
+const STAGES = {
+  prep:   {label:'Prep',    order:1},
+  cook:   {label:'Cook',    order:2},
+  cool:   {label:'Cool',    order:3},
+  package:{label:'Package', order:4}
+};
+
+let items = [];
+let seq = 0;
+
+function blankIng(name, amount, unit){
+  seq += 1;
+  return { id:'g'+seq, name:name||'', amount:amount==null?'':String(amount), unit:unit||'', group:'ingredient' };
+}
+
+function blankItem(){
+  seq += 1;
+  return {
+    id:'i'+seq,
+    name:'', qty:null, ordered:null,
+    stage:'prep', minutes:null, notes:'',
+    done:false, expanded:false,
+    yieldQty:null, yieldUnit:'',
+    ings:[],
+    source:''
+  };
+}
+
+/* ===================== NUMBER / UNIT HELPERS ===================== */
+
+/* Amounts arrive as free text from the SOP builder — "1 1/2", "2.5 lb",
+   "24 pieces", "a pinch". Reads a leading number (whole, decimal, fraction
+   or mixed) and hands back whatever words trailed it, so "2 lb" scales as 2
+   and keeps its "lb". No leading number means no scaling: that amount
+   travels through verbatim rather than being guessed at or dropped. */
+function parseAmount(raw){
+  const s = String(raw ?? '').trim();
+  if (!s) return null;
+  const m = s.match(/^(?:(\d+(?:\.\d+)?)\s+(\d+)\s*\/\s*(\d+)|(\d+)\s*\/\s*(\d+)|(\d+(?:\.\d+)?))\s*(.*)$/);
+  if (!m) return null;
+  let value;
+  if (m[1] !== undefined)      value = parseFloat(m[1]) + Number(m[2]) / Number(m[3]);
+  else if (m[4] !== undefined) value = Number(m[4]) / Number(m[5]);
+  else                         value = parseFloat(m[6]);
+  if (!isFinite(value)) return null;   /* also catches a /0 denominator */
+  return { value, suffix: m[7].trim() };
+}
+
+/* Kitchens read "2 1/2 lb" faster than "2.5 lb". */
+const FRACTIONS = [[.125,'1/8'],[.25,'1/4'],[.333,'1/3'],[.375,'3/8'],[.5,'1/2'],[.625,'5/8'],[.667,'2/3'],[.75,'3/4'],[.875,'7/8']];
+function fmtAmount(n){
+  if (n === null || n === undefined || !isFinite(n)) return '';
+  const rounded = Math.round(n * 1000) / 1000;
+  if (Number.isInteger(rounded)) return String(rounded);
+  const whole = Math.floor(rounded);
+  const rem = rounded - whole;
+  for (const [val, label] of FRACTIONS){
+    if (Math.abs(rem - val) < 0.02) return (whole ? whole + ' ' : '') + label;
+  }
+  return String(Math.round(rounded * 100) / 100);
+}
+
+/* Normalize only for MATCHING on the pull list — the member's own spelling
+   is what gets displayed back to them. */
+const UNIT_SYNONYMS = {
+  lb:'lb', lbs:'lb', pound:'lb', pounds:'lb',
+  oz:'oz', ounce:'oz', ounces:'oz',
+  g:'g', gram:'g', grams:'g',
+  kg:'kg', kilogram:'kg', kilograms:'kg',
+  cup:'cup', cups:'cup',
+  tbsp:'tbsp', tablespoon:'tbsp', tablespoons:'tbsp',
+  tsp:'tsp', teaspoon:'tsp', teaspoons:'tsp',
+  qt:'qt', quart:'qt', quarts:'qt',
+  gal:'gal', gallon:'gal', gallons:'gal',
+  ml:'ml', l:'L', liter:'L', liters:'L',
+  ea:'ea', each:'ea', ct:'ea', count:'ea', dozen:'dozen'
+};
+function normUnit(u){
+  const k = String(u || '').trim().toLowerCase().replace(/\.$/, '');
+  return UNIT_SYNONYMS[k] || k;
+}
+function normName(n){
+  return String(n || '').trim().toLowerCase().replace(/\s+/g, ' ');
+}
+
+function escAttr(v){
+  return (v ?? '').toString()
+    .replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+const esc = escAttr;
+
+function fmtMinutes(min){
+  if (!min || !isFinite(min)) return '0 min';
+  const h = Math.floor(min / 60), m = Math.round(min % 60);
+  if (!h) return m + ' min';
+  return h + 'h' + (m ? ' ' + m + 'm' : '');
+}
+
+/* ===================== SCALING =====================
+   batches = how many you're making ÷ how many one batch makes. */
+function batchesFor(it){
+  const qty = Number(it.qty);
+  const per = Number(it.yieldQty);
+  if (!qty || !per || per <= 0) return null;
+  return qty / per;
+}
+
+/* Returns one row per ingredient: scaled when the amount is a number,
+   passed through verbatim (with the multiplier noted) when it isn't. */
+function scaledIngredients(it){
+  const mult = batchesFor(it);
+  return it.ings.filter(g => g.name.trim() || g.amount.trim()).map(g => {
+    const base = parseAmount(g.amount);
+    const scalable = base !== null && mult !== null;
+    /* an explicit unit column wins; otherwise borrow whatever trailed the amount */
+    const unit = (g.unit || '').trim() || (base ? base.suffix : '');
+    return {
+      name: g.name,
+      unit,
+      group: g.group || 'ingredient',
+      baseText: base ? fmtAmount(base.value) : (g.amount || '').trim(),
+      need: scalable ? base.value * mult : null,
+      needText: scalable ? fmtAmount(base.value * mult) : (g.amount || '').trim(),
+      verbatim: !scalable
+    };
+  });
+}
+
+/* ===================== SESSION FIELDS ===================== */
+function getSession(){
+  const s = {};
+  SESSION_FIELDS.forEach(id => {
+    const el = document.getElementById(id);
+    s[id] = NUMERIC_SESSION.includes(id)
+      ? (el.value === '' ? null : Number(el.value))
+      : el.value;
+  });
+  return s;
+}
+
+function applySession(s){
+  if (!s) return;
+  SESSION_FIELDS.forEach(id => {
+    if (s[id] !== undefined && s[id] !== null) document.getElementById(id).value = s[id];
+  });
+}
+
+/* ===================== ITEM CARDS ===================== */
+function stageOptions(sel){
+  return Object.keys(STAGES).map(k =>
+    `<option value="${k}" ${sel === k ? 'selected' : ''}>${STAGES[k].label}</option>`).join('');
+}
+
+function ingRowHtml(g){
+  return `
+    <div class="ing-row" data-ing="${esc(g.id)}">
+      <input type="text" class="f-ing-name" value="${esc(g.name)}" placeholder="Ingredient" aria-label="Ingredient">
+      <input type="text" class="f-ing-amt" value="${esc(g.amount)}" placeholder="2" aria-label="Amount for one batch">
+      <input type="text" class="f-ing-unit" value="${esc(g.unit)}" placeholder="lb" aria-label="Unit">
+      <button type="button" class="rm-ing-btn no-print" title="Remove ingredient">×</button>
+    </div>`;
+}
+
+function calcHtml(it){
+  const rows = scaledIngredients(it);
+  if (!rows.length){
+    return `<p class="empty-note">No ingredients yet — add them above, or import a cost card or SOP to fill them in.</p>`;
+  }
+  const b = batchesFor(it);
+  let head, sub = '';
+  if (b === null){
+    head = 'Add how many you\'re making and what one batch makes';
+    sub = 'Until both are filled in, amounts below are for one batch.';
+  } else {
+    const rounded = Math.round(b * 100) / 100;
+    head = `${fmtAmount(b)} batch${rounded > 1 ? 'es' : ''} of this recipe`;
+    if (Math.abs(rounded - Math.round(rounded)) > 0.01){
+      const full = Math.ceil(b);
+      sub = `That's a partial batch. Running ${full} full batch${full > 1 ? 'es' : ''} gives you ` +
+            `${fmtAmount(full * Number(it.yieldQty) - Number(it.qty))} extra — samples, a comp, or next week's freezer.`;
+    }
+  }
+  const packRows = rows.filter(r => r.group === 'packaging');
+  const ingRows = rows.filter(r => r.group !== 'packaging');
+  const body = grp => grp.map(r => `
+    <tr>
+      <td>${esc(r.name) || '<span class="empty-note">(unnamed)</span>'}</td>
+      <td class="num">${esc(r.baseText)} ${esc(r.unit)}</td>
+      <td class="num need ${r.verbatim ? 'verbatim' : ''}">${esc(r.needText)} ${r.verbatim ? '' : esc(r.unit)}</td>
+    </tr>`).join('');
+
+  return `
+    <div class="scale-head">${esc(head)}</div>
+    ${sub ? `<p class="scale-sub ${b !== null ? 'nudge' : ''}">${esc(sub)}</p>` : ''}
+    <table class="scale-table">
+      <thead><tr><th>Ingredient</th><th class="num">One batch</th><th class="num">You need</th></tr></thead>
+      <tbody>
+        ${body(ingRows)}
+        ${packRows.length ? `<tr><td colspan="3" class="grp">Packaging</td></tr>${body(packRows)}` : ''}
+      </tbody>
+    </table>`;
+}
+
+function itemCardHtml(it, idx, total){
+  const stage = STAGES[it.stage] || STAGES.prep;
+  return `
+    <article class="item-card" data-id="${esc(it.id)}">
+      <div class="item-top">
+        <div class="item-seq">
+          <input type="checkbox" class="f-done" ${it.done ? 'checked' : ''} aria-label="Mark done">
+          <span>${idx + 1}.</span>
+          <span class="stage-pill stage-${it.stage}">${stage.label}</span>
+        </div>
+        <div class="item-tools no-print">
+          <button type="button" class="icon-btn f-up" title="Move earlier" ${idx === 0 ? 'disabled' : ''}>↑</button>
+          <button type="button" class="icon-btn f-down" title="Move later" ${idx === total - 1 ? 'disabled' : ''}>↓</button>
+          <button type="button" class="rm-btn f-rm" title="Remove this item">Remove</button>
+        </div>
+      </div>
+
+      <div class="item-grid">
+        <div class="field">
+          <label>What you're making</label>
+          <input type="text" class="f-name" value="${esc(it.name)}" placeholder="e.g., Jollof chicken">
+        </div>
+        <div class="field">
+          <label>How many</label>
+          <input type="number" class="f-qty" min="0" step="1" value="${it.qty ?? ''}" placeholder="36">
+          ${it.ordered ? `<span class="ordered-hint">${it.ordered} ordered</span>` : ''}
+        </div>
+        <div class="field">
+          <label>Stage</label>
+          <select class="f-stage">${stageOptions(it.stage)}</select>
+        </div>
+        <div class="field">
+          <label>Minutes</label>
+          <input type="number" class="f-min" min="0" step="5" value="${it.minutes ?? ''}" placeholder="45">
+        </div>
+      </div>
+
+      <details class="recipe" ${it.expanded ? 'open' : ''}>
+        <summary>Recipe &amp; scaling${it.source ? ' · from ' + esc(it.source) : ''}</summary>
+        <div class="recipe-body">
+          <div class="yield-line">
+            <span>One batch of this recipe makes</span>
+            <input type="number" class="qty f-yield-qty" min="0" step="1" value="${it.yieldQty ?? ''}" placeholder="12">
+            <input type="text" class="unit f-yield-unit" value="${esc(it.yieldUnit)}" placeholder="servings">
+          </div>
+          <div class="ing-head"><span>Ingredient</span><span>Amount</span><span>Unit</span><span></span></div>
+          <div class="ing-rows">${it.ings.map(ingRowHtml).join('')}</div>
+          <button type="button" class="add-ing-btn no-print">+ Add ingredient</button>
+          <div class="scale-out" data-calc>${calcHtml(it)}</div>
+          <div class="field" style="margin-top:12px">
+            <label>Notes for this item</label>
+            <input type="text" class="f-notes" value="${esc(it.notes)}" placeholder="e.g., marinate the night before">
+          </div>
+        </div>
+      </details>
+    </article>`;
+}
+
+function renderItems(){
+  const list = document.getElementById('itemList');
+  if (!items.length){
+    list.innerHTML = `<p class="empty-note">Nothing on the list yet. Import your orders above, or add an item to start.</p>`;
+    return;
+  }
+  list.innerHTML = items.map((it, i) => itemCardHtml(it, i, items.length)).join('');
+
+  list.querySelectorAll('.item-card').forEach(card => {
+    const id = card.dataset.id;
+    const it = items.find(x => x.id === id);
+    if (!it) return;
+
+    const refresh = () => {
+      const target = card.querySelector('[data-calc]');
+      if (target) target.innerHTML = calcHtml(it);
+      renderPullList();
+      renderSummary();
+    };
+
+    card.querySelector('.f-name').addEventListener('input', e => { it.name = e.target.value; renderPullList(); });
+    card.querySelector('.f-qty').addEventListener('input', e => {
+      it.qty = e.target.value === '' ? null : Number(e.target.value);
+      refresh();
+    });
+    card.querySelector('.f-min').addEventListener('input', e => {
+      it.minutes = e.target.value === '' ? null : Number(e.target.value);
+      renderSummary();
+    });
+    card.querySelector('.f-notes').addEventListener('input', e => { it.notes = e.target.value; });
+    card.querySelector('.f-done').addEventListener('change', e => { it.done = e.target.checked; });
+    card.querySelector('.f-stage').addEventListener('change', e => {
+      it.stage = e.target.value;
+      const pill = card.querySelector('.stage-pill');
+      pill.className = 'stage-pill stage-' + it.stage;
+      pill.textContent = (STAGES[it.stage] || STAGES.prep).label;
+    });
+    card.querySelector('.f-yield-qty').addEventListener('input', e => {
+      it.yieldQty = e.target.value === '' ? null : Number(e.target.value);
+      refresh();
+    });
+    card.querySelector('.f-yield-unit').addEventListener('input', e => { it.yieldUnit = e.target.value; });
+
+    card.querySelector('details.recipe').addEventListener('toggle', e => { it.expanded = e.target.open; });
+
+    card.querySelector('.f-up').addEventListener('click', () => moveItem(id, -1));
+    card.querySelector('.f-down').addEventListener('click', () => moveItem(id, 1));
+    card.querySelector('.f-rm').addEventListener('click', () => {
+      items = items.filter(x => x.id !== id);
+      renderAll();
+    });
+    card.querySelector('.add-ing-btn').addEventListener('click', () => {
+      it.ings.push(blankIng());
+      it.expanded = true;
+      renderAll();
+    });
+
+    card.querySelectorAll('.ing-row').forEach(row => {
+      const g = it.ings.find(x => x.id === row.dataset.ing);
+      if (!g) return;
+      row.querySelector('.f-ing-name').addEventListener('input', e => { g.name = e.target.value; refresh(); });
+      row.querySelector('.f-ing-amt').addEventListener('input', e => { g.amount = e.target.value; refresh(); });
+      row.querySelector('.f-ing-unit').addEventListener('input', e => { g.unit = e.target.value; refresh(); });
+      row.querySelector('.rm-ing-btn').addEventListener('click', () => {
+        it.ings = it.ings.filter(x => x.id !== g.id);
+        renderAll();
+      });
+    });
+  });
+}
+
+function moveItem(id, dir){
+  const i = items.findIndex(x => x.id === id);
+  const j = i + dir;
+  if (i < 0 || j < 0 || j >= items.length) return;
+  [items[i], items[j]] = [items[j], items[i]];
+  renderAll();
+}
+
+/* ===================== PULL LIST ===================== */
+function buildPullList(){
+  const map = new Map();
+  items.forEach(it => {
+    scaledIngredients(it).forEach(r => {
+      if (!r.name.trim()) return;
+      const key = r.group + '|' + normName(r.name) + '|' + normUnit(r.unit);
+      if (!map.has(key)){
+        map.set(key, { name:r.name.trim(), unit:r.unit.trim(), group:r.group, total:0, texts:[], from:[], anyVerbatim:false });
+      }
+      const row = map.get(key);
+      if (r.verbatim){ row.anyVerbatim = true; if (r.needText) row.texts.push(r.needText); }
+      else row.total += r.need;
+      const label = it.name.trim() || 'Unnamed item';
+      if (!row.from.includes(label)) row.from.push(label);
+    });
+  });
+  return [...map.values()];
+}
+
+function renderPullList(){
+  const host = document.getElementById('pullList');
+  const rows = buildPullList();
+  if (!rows.length){
+    host.innerHTML = `<p class="empty-note">Ingredients you add to your items show up here, combined into one list.</p>`;
+    return;
+  }
+  const ings = rows.filter(r => r.group !== 'packaging');
+  const packs = rows.filter(r => r.group === 'packaging');
+  const body = grp => grp.map(r => {
+    const amt = r.total > 0 ? fmtAmount(r.total) + ' ' + esc(r.unit) : '';
+    const extra = r.anyVerbatim ? `<span class="verbatim">${amt ? ' + ' : ''}${esc(r.texts.join(', '))}</span>` : '';
+    return `
+      <tr>
+        <td>${esc(r.name)}<div class="from">for ${esc(r.from.join(', '))}</div></td>
+        <td class="num amt">${amt}${extra}</td>
+      </tr>`;
+  }).join('');
+
+  host.innerHTML = `
+    <table class="pull-table">
+      <thead><tr><th>Ingredient</th><th class="num">Total to pull</th></tr></thead>
+      <tbody>
+        ${body(ings)}
+        ${packs.length ? `<tr><td colspan="2" class="pull-group">Packaging</td></tr>${body(packs)}` : ''}
+      </tbody>
+    </table>`;
+}
+
+/* ===================== SUMMARY + TIME CHECK ===================== */
+function totalMinutes(){
+  const s = getSession();
+  const itemMin = items.reduce((sum, it) => sum + (Number(it.minutes) || 0), 0);
+  return itemMin + (Number(s.setupMin) || 0);
+}
+
+function renderSummary(){
+  const units = items.reduce((sum, it) => sum + (Number(it.qty) || 0), 0);
+  const batches = items.reduce((sum, it) => {
+    const b = batchesFor(it);
+    return sum + (b === null ? 0 : Math.ceil(b));
+  }, 0);
+  const mins = totalMinutes();
+
+  document.getElementById('statItems').textContent = items.length;
+  document.getElementById('statUnits').textContent = units;
+  document.getElementById('statBatches').textContent = batches;
+  document.getElementById('statTime').textContent = mins ? fmtMinutes(mins) : '—';
+
+  renderTimeCheck(mins);
+}
+
+function renderTimeCheck(mins){
+  const s = getSession();
+  const readout = document.getElementById('timeReadout');
+  const big = document.getElementById('timeBig');
+  const sub = document.getElementById('timeSub');
+  const bar = document.getElementById('timeBar');
+  readout.classList.remove('is-empty', 'is-over');
+  bar.classList.remove('over');
+
+  const booked = Number(s.hoursBooked) || 0;
+  if (!booked || !mins){
+    readout.classList.add('is-empty');
+    big.textContent = 'Add hours booked and minutes per item to see your time check.';
+    sub.textContent = 'Rough guesses are fine — the point is catching a four-hour list in a three-hour slot before you get there.';
+    bar.style.width = '0%';
+    return;
+  }
+
+  const bookedMin = booked * 60;
+  const pct = Math.max(0, Math.min(100, Math.round((mins / bookedMin) * 100)));
+  bar.style.width = pct + '%';
+  const setup = Number(s.setupMin) || 0;
+
+  if (mins > bookedMin){
+    readout.classList.add('is-over');
+    bar.classList.add('over');
+    bar.style.width = '100%';
+    big.textContent = `${fmtMinutes(mins)} of work in a ${fmtMinutes(bookedMin)} session`;
+    sub.textContent = `You're over by ${fmtMinutes(mins - bookedMin)}. Book more time, move an item to another day, or cut the list — ` +
+      `going over means rushing the cleanup, and the next member is already at the door.`;
+  } else {
+    big.textContent = `${fmtMinutes(mins)} of work in a ${fmtMinutes(bookedMin)} session`;
+    sub.textContent = `${fmtMinutes(bookedMin - mins)} of slack` +
+      (setup ? `, with ${fmtMinutes(setup)} of setup and cleanup already counted.` : `. Add setup and cleanup minutes above so they're inside your booked time.`);
+  }
+}
+
+/* ===================== ADD / SORT ===================== */
+function addItem(){
+  const it = blankItem();
+  it.expanded = true;
+  items.push(it);
+  renderAll();
+}
+
+function sortByStage(){
+  items.sort((a, b) => (STAGES[a.stage] || STAGES.prep).order - (STAGES[b.stage] || STAGES.prep).order);
+  renderAll();
+}
+
+/* ===================== IMPORT =====================
+   One file input, four shapes. Everything reports back in the note
+   strip — an import that quietly does nothing is worse than none. */
+function note(msg, bad){
+  const n = document.getElementById('importNote');
+  n.className = 'import-note' + (bad ? ' bad' : '');
+  n.innerHTML = msg;
+  n.hidden = false;
+}
+
+function detectImport(data){
+  if (!data || typeof data !== 'object') return null;
+  if (data.schema === 'afw-prep-list-v1') return 'prep-list';
+  if (data._tool === 'pre-sell-order-form' || Array.isArray(data.orders)) return 'orders';
+  if (data.schema === 'afw-binder-v1' && Array.isArray(data.items)) return 'binder';
+  if (data.schema === 'afw-sop-v1') return 'sop';
+  if (Array.isArray(data.ingredients) && ('productName' in data || 'yieldQty' in data)) return 'cost-card';
+  return null;
+}
+
+function importFile(data){
+  const kind = detectImport(data);
+  if (kind === 'prep-list') return importPrepList(data);
+  if (kind === 'orders')    return importOrders(data);
+  if (kind === 'binder')    return importBinder(data);
+  if (kind === 'sop')       return importRecipe(sopToRecipe(data));
+  if (kind === 'cost-card') return importRecipe(costCardToRecipe(data));
+  note(`That file didn't look like anything this tool knows how to read. Export from the Pre-Sell Order Form, the Food Cost &amp; Pricing tool, the SOP Builder, or this tool.`, true);
+}
+
+/* --- our own file --- */
+function importPrepList(data){
+  applyState(data);
+  note(`Prep list reloaded — <b>${items.length} item${items.length === 1 ? '' : 's'}</b> back on the board.`);
+}
+
+/* --- orders → quantities --- */
+function importOrders(data){
+  const orders = Array.isArray(data.orders) ? data.orders : [];
+  const committed = orders.filter(o => o.paid && o.paid !== 'unpaid');
+  const useOrders = committed.length ? committed : orders;
+  const skipped = orders.length - useOrders.length;
+
+  const tally = new Map();
+  useOrders.forEach(o => {
+    (Array.isArray(o.items) ? o.items : []).forEach(line => {
+      const name = String(line.name || '').trim();
+      if (!name) return;
+      const key = normName(name);
+      if (!tally.has(key)) tally.set(key, { name, qty:0 });
+      tally.get(key).qty += Number(line.qty) || 0;
+    });
+  });
+
+  if (!tally.size){
+    note(`That order file didn't have any named items in it yet. Add items to your orders, export again, or just type them in below.`, true);
+    return;
+  }
+
+  let added = 0, updated = 0;
+  tally.forEach(t => {
+    const existing = items.find(it => normName(it.name) === normName(t.name));
+    if (existing){
+      existing.qty = t.qty;
+      existing.ordered = t.qty;
+      updated++;
+    } else {
+      const it = blankItem();
+      it.name = t.name;
+      it.qty = t.qty;
+      it.ordered = t.qty;
+      items.push(it);
+      added++;
+    }
+  });
+
+  const s = data.settings || {};
+  const fillIfEmpty = (id, val) => {
+    const el = document.getElementById(id);
+    if (el && !el.value && val) el.value = val;
+  };
+  fillIfEmpty('pickupDay', s.pickupDay);
+  fillIfEmpty('sessionName', s.offerName ? s.offerName + ' pickup' : '');
+
+  renderAll();
+  note(
+    `Pulled <b>${tally.size} item${tally.size === 1 ? '' : 's'}</b> from <b>${useOrders.length} order${useOrders.length === 1 ? '' : 's'}</b>` +
+    `${added ? ` — ${added} added` : ''}${updated ? `${added ? ', ' : ' — '}${updated} updated` : ''}. ` +
+    (committed.length
+      ? (skipped ? `${skipped} unpaid order${skipped === 1 ? '' : 's'} left out — a "maybe" isn't an order until money changes hands.` : `All of them committed. Nice.`)
+      : `None were marked paid yet, so we counted them all — bump the numbers down if some don't come through.`) +
+    ` Quantities are yours to edit; make extra if you want samples or a cushion.`
+  );
+}
+
+/* --- SOP → recipe --- */
+function sopToRecipe(sop){
+  /* SOP yields are free text — "24 pieces", "3 gallons", "one sheet pan" */
+  const y = parseAmount(sop.yield);
+  return {
+    name: sop.name || '',
+    yieldQty: y ? y.value : null,
+    yieldUnit: y ? y.suffix : String(sop.yield || '').trim(),
+    source: 'SOP',
+    ings: (Array.isArray(sop.ingredients) ? sop.ingredients : [])
+      .filter(g => (g.name || '').trim())
+      .map(g => blankIng(g.name, g.amount, g.unit))
+  };
+}
+
+/* --- Food Cost card → recipe ---
+   uqty/uunit are the amount used per BATCH; yieldQty is units per batch;
+   packaging[].used is also per batch (see packCost in that tool). */
+function costCardToRecipe(card){
+  const ings = (Array.isArray(card.ingredients) ? card.ingredients : [])
+    .filter(g => (g.name || '').trim())
+    .map(g => blankIng(g.name, g.uqty, g.uunit));
+  const packs = (Array.isArray(card.packaging) ? card.packaging : [])
+    .filter(p => (p.name || '').trim())
+    .map(p => {
+      const g = blankIng(p.name, p.used, 'ea');
+      g.group = 'packaging';
+      return g;
+    });
+  return {
+    name: card.productName || '',
+    yieldQty: card.yieldQty || null,
+    yieldUnit: card.yieldUnit || '',
+    source: 'cost card',
+    ings: ings.concat(packs)
+  };
+}
+
+/* Attach to a matching item by name, or start a new one. */
+function importRecipe(recipe){
+  if (!recipe.ings.length){
+    note(`That file didn't have any ingredients in it. Add them in the tool you exported from, or type them in below.`, true);
+    return;
+  }
+  const match = attachRecipe(recipe);
+  renderAll();
+  note(match.created
+    ? `Added <b>${esc(recipe.name) || 'a new item'}</b> from your ${recipe.source} with <b>${recipe.ings.length} ingredient${recipe.ings.length === 1 ? '' : 's'}</b>. Set how many you're making and the batch math runs itself.`
+    : `Attached the ${recipe.source} recipe to <b>${esc(match.item.name)}</b> — <b>${recipe.ings.length} ingredient${recipe.ings.length === 1 ? '' : 's'}</b>, scaled to the ${match.item.qty ?? '—'} you're making.`);
+}
+
+function attachRecipe(recipe){
+  let item = recipe.name
+    ? items.find(it => normName(it.name) && normName(it.name) === normName(recipe.name))
+    : null;
+  let created = false;
+  if (!item){
+    item = blankItem();
+    item.name = recipe.name;
+    items.push(item);
+    created = true;
+  }
+  item.yieldQty = recipe.yieldQty;
+  item.yieldUnit = recipe.yieldUnit;
+  item.ings = recipe.ings;
+  item.source = recipe.source;
+  item.expanded = true;
+  return { item, created };
+}
+
+/* --- binder → many recipes at once --- */
+function importBinder(binder){
+  const sops = binder.items
+    .map(entry => entry && entry.data)
+    .filter(d => d && d.type === 'production' && Array.isArray(d.ingredients) && d.ingredients.some(g => (g.name || '').trim()));
+
+  if (!sops.length){
+    note(`That binder didn't have any production SOPs with ingredients in it — operational SOPs don't carry a recipe to scale.`, true);
+    return;
+  }
+
+  const startEmpty = items.length === 0;
+  let attached = 0, createdNames = [], skipped = [];
+  sops.forEach(sop => {
+    const recipe = sopToRecipe(sop);
+    const hasMatch = recipe.name && items.some(it => normName(it.name) === normName(recipe.name));
+    if (hasMatch || startEmpty){
+      const res = attachRecipe(recipe);
+      if (res.created) createdNames.push(recipe.name || 'Untitled'); else attached++;
+    } else {
+      skipped.push(recipe.name || 'Untitled');
+    }
+  });
+
+  renderAll();
+  const parts = [];
+  if (attached) parts.push(`<b>${attached}</b> attached to items already on your list`);
+  if (createdNames.length) parts.push(`<b>${createdNames.length}</b> added as new items`);
+  note(
+    `Read <b>${sops.length} production SOP${sops.length === 1 ? '' : 's'}</b> — ${parts.join(' and ') || 'nothing matched'}.` +
+    (skipped.length ? ` Left alone (no item by that name): ${esc(skipped.join(', '))}. Add the item first, then import again.` : '')
+  );
+}
+
+/* ===================== EXPORT / STATE ===================== */
+function collectState(){
+  return {
+    schema: 'afw-prep-list-v1',
+    _tool: 'prep-list',
+    fileVersion: 1,
+    session: getSession(),
+    items
+  };
+}
+
+/* Imported files are a boundary: they get hand-edited, emailed around, and
+   opened years later. Everything below lands in the state well-typed no
+   matter what was in the file, so nothing downstream has to wonder. */
+const asText = v => (v === null || v === undefined) ? '' : String(v);
+const asNum = v => (v === '' || v === null || v === undefined || isNaN(Number(v))) ? null : Number(v);
+
+function applyState(data){
+  if (!data) return;
+  applySession(data.session);
+  const raw = Array.isArray(data.items) ? data.items : [];
+  items = raw.map(o => {
+    const merged = { ...blankItem(), ...o };
+    merged.name = asText(o.name);
+    merged.notes = asText(o.notes);
+    merged.source = asText(o.source);
+    merged.qty = asNum(o.qty);
+    merged.ordered = asNum(o.ordered);
+    merged.minutes = asNum(o.minutes);
+    merged.yieldQty = asNum(o.yieldQty);
+    merged.yieldUnit = asText(o.yieldUnit);
+    merged.done = !!o.done;
+    merged.expanded = !!o.expanded;
+    if (!STAGES[merged.stage]) merged.stage = 'prep';
+    merged.ings = (Array.isArray(o.ings) ? o.ings : []).map(g => ({
+      ...blankIng(),
+      ...g,
+      name: asText(g.name), amount: asText(g.amount), unit: asText(g.unit),
+      group: g.group === 'packaging' ? 'packaging' : 'ingredient'
+    }));
+    return merged;
+  });
+  /* Ids came from another session's counter. Start ours past the highest one
+     we just loaded, or a later "+ Add" would mint a duplicate id and two rows
+     would answer to the same click. */
+  const highest = items.reduce((max, it) =>
+    [it.id, ...it.ings.map(g => g.id)].reduce((m, id) => {
+      const n = parseInt(String(id).slice(1), 10);
+      return isFinite(n) && n > m ? n : m;
+    }, max), 0);
+  seq = Math.max(seq, highest);
+  renderAll();
+}
+
+function slugify(s){
+  return String(s || '').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+}
+
+function doExport(){
+  const s = getSession();
+  const slug = slugify(s.sessionName) || 'prep-list';
+  const date = new Date().toISOString().slice(0, 10);
+  const blob = new Blob([JSON.stringify(collectState(), null, 2)], { type:'application/json' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = `AFW_preplist_${slug}_${date}.json`;
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ===================== PRINT SHEET ===================== */
+function buildPrintSheet(){
+  const s = getSession();
+  const mins = totalMinutes();
+  const meta = [
+    s.prepDate ? `Prep ${esc(s.prepDate)}` : '',
+    s.pickupDay ? `Pickup ${esc(s.pickupDay)}` : '',
+    s.hoursBooked ? `${esc(s.hoursBooked)} hr booked` : '',
+    mins ? `${esc(fmtMinutes(mins))} of work` : ''
+  ].filter(Boolean);
+
+  const itemHtml = items.length ? items.map((it, i) => {
+    const rows = scaledIngredients(it);
+    const b = batchesFor(it);
+    const bits = [
+      b !== null ? `${fmtAmount(b)} × batch of ${esc(it.yieldQty)}${it.yieldUnit ? ' ' + esc(it.yieldUnit) : ''}` : '',
+      (STAGES[it.stage] || STAGES.prep).label,
+      it.minutes ? `~${esc(fmtMinutes(Number(it.minutes)))}` : ''
+    ].filter(Boolean);
+    return `
+      <div class="ps-item">
+        <div class="ps-item-head">
+          <span class="ps-box"></span>
+          <span class="ps-item-qty">${it.qty ?? '—'}</span>
+          <span class="ps-item-name">${esc(it.name) || 'Unnamed item'}</span>
+          <span class="ps-item-meta">${bits.join(' · ')}</span>
+        </div>
+        ${rows.length ? `<div class="ps-ings">${rows.map(r =>
+          `<span class="ps-ing"><span class="ps-box"></span> ${esc(r.name)} <b>${esc(r.needText)}${r.verbatim ? '' : ' ' + esc(r.unit)}</b></span>`
+        ).join('')}</div>` : ''}
+        ${it.notes ? `<div class="ps-note">${esc(it.notes)}</div>` : ''}
+      </div>`;
+  }).join('') : `<p class="ps-blank">Nothing on the list yet.</p>`;
+
+  const pull = buildPullList();
+  const pullRow = r => {
+    const amt = (r.total > 0 ? fmtAmount(r.total) + ' ' + esc(r.unit) : '') +
+                (r.anyVerbatim ? (r.total > 0 ? ' + ' : '') + esc(r.texts.join(', ')) : '');
+    return `<tr><td class="box"><span class="ps-box"></span></td><td>${esc(r.name)}</td><td class="num">${amt}</td></tr>`;
+  };
+  const pullPacks = pull.filter(r => r.group === 'packaging');
+  const pullHtml = pull.length ? `
+    <table class="ps-pull">
+      ${pull.filter(r => r.group !== 'packaging').map(pullRow).join('')}
+      ${pullPacks.length ? `<tr><td></td><td colspan="2" class="ps-grp">Packaging</td></tr>${pullPacks.map(pullRow).join('')}` : ''}
+    </table>` : `<p class="ps-blank">Add ingredients to your items and they'll combine here.</p>`;
+
+  document.getElementById('print-sheet').innerHTML = `
+    <div class="ps-head">
+      <div class="ps-brand">Akron Food Works · Prep List</div>
+      <div class="ps-title">${esc(s.sessionName) || 'Prep list'}</div>
+      ${meta.length ? `<div class="ps-meta">${meta.map(m => `<span>${m}</span>`).join('')}</div>` : ''}
+    </div>
+    <div class="ps-section">In the order you'll make them</div>
+    ${itemHtml}
+    <div class="ps-section">Pull list — grab it all in one trip</div>
+    ${pullHtml}
+    <div class="ps-foot">Built with the AFW Prep List Builder · Akron Food Works, a program of The Well CDC · Create · Incubate · Elevate</div>`;
+}
+
+function doPrint(){
+  buildPrintSheet();
+  document.body.classList.add('printing');
+  const cleanup = () => {
+    document.body.classList.remove('printing');
+    document.getElementById('print-sheet').innerHTML = '';
+    window.removeEventListener('afterprint', cleanup);
+  };
+  window.addEventListener('afterprint', cleanup);
+  window.print();
+  /* fallback for environments that never fire afterprint */
+  setTimeout(cleanup, 2000);
+}
+
+/* ===================== WIRING ===================== */
+function renderAll(){
+  renderItems();
+  renderPullList();
+  renderSummary();
+}
+
+document.getElementById('btnAddItem').addEventListener('click', addItem);
+document.getElementById('btnSortStage').addEventListener('click', sortByStage);
+document.getElementById('btnExport').addEventListener('click', doExport);
+document.getElementById('btnPrint').addEventListener('click', doPrint);
+
+['btnImport', 'btnImport2'].forEach(id => {
+  document.getElementById(id).addEventListener('click', () => document.getElementById('fileImport').click());
+});
+
+document.getElementById('fileImport').addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const reader = new FileReader();
+  reader.onload = () => {
+    let parsed;
+    try { parsed = JSON.parse(reader.result); }
+    catch (err) { note('That file is not valid JSON.', true); return; }
+    importFile(parsed);
+  };
+  reader.readAsText(f);
+  e.target.value = '';
+});
+
+SESSION_FIELDS.forEach(id => {
+  document.getElementById(id).addEventListener('input', renderSummary);
+});
+
+/* ---------- init ---------- */
+items = [blankItem()];
+renderAll();
+</script>
+
+<!-- ---------- cloud save (see afw-cloud.js) ---------- -->
+<script src="./afw-config.js"></script>
+<script src="./afw-cloud.js"></script>
+<script>
+  AFWCloud.mountToolBar("#afw-toolbar", {
+    tool:         "prep-list",          /* must match the key in index.html */
+    label:        "prep list",
+    serialize:    () => collectState(),
+    deserialize:  (data) => applyState(data),
+    suggestTitle: () => document.getElementById("sessionName").value || ""
+  });
+</script>
+</body>
+</html>
