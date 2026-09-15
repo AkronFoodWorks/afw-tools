@@ -30,9 +30,23 @@
    with its existing download/upload .json flow.
 
    THE SESSION IS SHARED ACROSS TOOLS
-   Signing in on the hub signs you in on every tool page too,
-   because they are all served from the same site. That is why
-   the sign-in box lives on the dashboard.
+   Signing in anywhere signs you in everywhere, because every
+   page is served from the same site and the session lives in
+   that site's local storage.
+
+   SIGN IN FROM ANYWHERE
+   The hub's account bar and every tool's save bar render the
+   SAME email form (see signInHTML / wireSignIn). A member who
+   lands straight on a tool never has to go find the hub first
+   to start an account, and the emailed link returns them to
+   the page they were standing on.
+
+   TABS KEEP UP WITH EACH OTHER
+   Tools open in their own tabs, so a member can be signed out
+   in one tab and sign in in another. watchSession() re-checks
+   the session when a tab is shown again or when another tab
+   writes one, and the bars re-render themselves. Nobody has to
+   know to hit reload.
    ============================================================ */
 
 window.AFWCloud = (function () {
@@ -65,6 +79,9 @@ window.AFWCloud = (function () {
   function emit() { listeners.forEach(function (fn) { try { fn(user, status); } catch (e) {} }); }
   function emitSaved() { savedListeners.forEach(function (fn) { try { fn(); } catch (e) {} }); }
   function when(fn) { listeners.push(fn); if (status !== "loading") fn(user, status); }
+
+  /* This page's own URL, with any magic-link tokens stripped off. */
+  function here() { return location.href.split("#")[0]; }
 
   function niceDate(iso) {
     if (!iso) return "";
@@ -163,6 +180,7 @@ window.AFWCloud = (function () {
         status = user ? "in" : "out";
         emit();
       });
+      watchSession();
       // A magic link lands with tokens in the URL hash. Once the
       // client has consumed them, tidy the address bar so nobody
       // copies a link with credentials in it.
@@ -179,12 +197,47 @@ window.AFWCloud = (function () {
     });
   }
 
+  /* ---------- keeping tabs in sync ----------
+     Every tool opens in its own tab, and the emailed link usually
+     opens yet another one. So a member can be signed out in THIS tab
+     while they sign in in that one. Re-check the session whenever
+     this tab is looked at again, or when another tab writes a new
+     one, and let the bars re-render themselves. Nobody should have
+     to know to hit reload. */
+  function syncSession() {
+    if (!sb) return;
+    sb.auth.getSession().then(function (r) {
+      var next = (r && r.data && r.data.session && r.data.session.user) || null;
+      // Only react to a real change — someone half-way through typing
+      // their email should never have the box cleared out from under them.
+      if ((next && next.id) === (user && user.id)) return;
+      user = next;
+      status = user ? "in" : "out";
+      emit();
+    }).catch(function () { /* offline or a hiccup: leave the bar as it is */ });
+  }
+
+  function watchSession() {
+    document.addEventListener("visibilitychange", function () {
+      if (!document.hidden) syncSession();
+    });
+    window.addEventListener("focus", syncSession);
+    window.addEventListener("storage", function (e) {
+      // Supabase keeps the session under a key like "sb-<project>-auth-token".
+      if (e.key && e.key.indexOf("sb-") !== 0) return;
+      syncSession();
+    });
+  }
+
   /* ---------- auth ---------- */
   function signIn(email) {
     if (!sb) return Promise.reject(new Error("Cloud saving is not set up yet."));
     return sb.auth.signInWithOtp({
       email: String(email || "").trim(),
-      options: { emailRedirectTo: CFG.REDIRECT_TO || location.href }
+      // Come back to the page they signed in FROM, not always the hub.
+      // Supabase only honours URLs matching its Redirect URL list, so
+      // that list needs a /** wildcard for the site (see afw-config.js).
+      options: { emailRedirectTo: CFG.REDIRECT_TO || here() }
     }).then(function (r) {
       if (r.error) throw r.error;
       return true;
@@ -243,7 +296,61 @@ window.AFWCloud = (function () {
     });
   }
 
-  /* ---------- account bar (the dashboard's sign-in box) ---------- */
+  /* ---------- the sign-in form, shared by every bar ----------
+     One form, one set of words, rendered wherever a signed-out
+     member happens to be — the hub's account bar or any tool's
+     save bar. Only the headline changes, so a tool can say what
+     signing in would do for THIS page. */
+  function signInHTML(lab, sub) {
+    return '<div class="afwc-bar">' +
+      '<div class="afwc-grow"><p class="afwc-lab">' + esc(lab) + '</p>' +
+      '<p class="afwc-sub">' + esc(sub) + '</p></div>' +
+      '<input class="afwc-in" type="email" autocomplete="email" ' +
+      'placeholder="you@yourbusiness.com" data-afw="email">' +
+      '<button class="afwc-btn" data-afw="send">Email me a link</button></div>' +
+      '<p class="afwc-note mut" data-afw="msg" hidden></p>';
+  }
+
+  /* Wires up whatever signInHTML just put on the page. Safe to call
+     on a host with no form in it — it simply does nothing. */
+  function wireSignIn(host) {
+    var input = host.querySelector('[data-afw="email"]');
+    var btn   = host.querySelector('[data-afw="send"]');
+    var msg   = host.querySelector('[data-afw="msg"]');
+    if (!input || !btn || !msg) return;
+
+    function show(kind, text) {
+      msg.className = "afwc-note " + kind;
+      msg.textContent = text;
+      msg.hidden = false;
+    }
+    function go() {
+      var v = input.value.trim();
+      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) {
+        show("bad", "That doesn’t look like an email address yet.");
+        input.focus();
+        return;
+      }
+      btn.disabled = true;
+      btn.textContent = "Sending…";
+      signIn(v).then(function () {
+        show("ok", "Check " + v + " for a link from Akron Food Works. It brings you " +
+                   "back to this page and signs you in for 30 days on this device. " +
+                   "If it opens in a new tab, this one catches up on its own — nothing " +
+                   "you’ve typed here is lost. The link works once, and it can take a " +
+                   "minute to arrive.");
+        btn.textContent = "Link sent";
+      }).catch(function (e) {
+        show("bad", (e && e.message) || "We couldn’t send that link. Try again in a moment.");
+        btn.disabled = false;
+        btn.textContent = "Email me a link";
+      });
+    }
+    btn.onclick = go;
+    input.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); go(); } };
+  }
+
+  /* ---------- account bar (the hub's sign-in box) ---------- */
   function mountAccountBar(target, opts) {
     injectCSS();
     var host = el(target);
@@ -280,46 +387,11 @@ window.AFWCloud = (function () {
         return;
       }
       // signed out
-      host.innerHTML = '<div class="afwc-bar">' +
-        '<div class="afwc-grow"><p class="afwc-lab">Save your work to come back to it</p>' +
-        '<p class="afwc-sub">Enter your email and we’ll send a sign-in link. ' +
-        'No password to remember.</p></div>' +
-        '<input class="afwc-in" type="email" autocomplete="email" ' +
-        'placeholder="you@yourbusiness.com" data-afw="email">' +
-        '<button class="afwc-btn" data-afw="send">Email me a link</button></div>' +
-        '<p class="afwc-note mut" data-afw="msg" hidden></p>';
-
-      var input = host.querySelector('[data-afw="email"]');
-      var btn   = host.querySelector('[data-afw="send"]');
-      var msg   = host.querySelector('[data-afw="msg"]');
-
-      function show(kind, text) {
-        msg.className = "afwc-note " + kind;
-        msg.textContent = text;
-        msg.hidden = false;
-      }
-      function go() {
-        var v = input.value.trim();
-        if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(v)) {
-          show("bad", "That doesn’t look like an email address yet.");
-          input.focus();
-          return;
-        }
-        btn.disabled = true;
-        btn.textContent = "Sending…";
-        signIn(v).then(function () {
-          show("ok", "Check " + v + " for a link from Akron Food Works. It signs you " +
-                     "in for 30 days on this device. The link works once, and it can " +
-                     "take a minute to arrive.");
-          btn.textContent = "Link sent";
-        }).catch(function (e) {
-          show("bad", (e && e.message) || "We couldn’t send that link. Try again in a moment.");
-          btn.disabled = false;
-          btn.textContent = "Email me a link";
-        });
-      }
-      btn.onclick = go;
-      input.onkeydown = function (e) { if (e.key === "Enter") { e.preventDefault(); go(); } };
+      host.innerHTML = signInHTML(
+        "Save your work to come back to it",
+        "Enter your email and we’ll send a sign-in link. No password to remember."
+      );
+      wireSignIn(host);
     }
 
     when(render);
@@ -514,12 +586,15 @@ window.AFWCloud = (function () {
       if (status === "unconfigured" || status === "error") { host.innerHTML = ""; return; }
 
       if (status === "out") {
-        var hub = cfg.hubHref || "./index.html";
-        host.innerHTML = '<div class="afwc-bar"><div class="afwc-grow">' +
-          '<p class="afwc-lab">Want this ' + esc(label) + ' waiting for you next time?</p>' +
-          '<p class="afwc-sub">Sign in on the tool hub with just your email, then come ' +
-          'back — saving turns on here automatically.</p></div>' +
-          '<a class="afwc-btn ghost" href="' + esc(hub) + '">Go to the hub</a></div>';
+        // The same email form the hub shows. Nobody gets sent away to
+        // go sign in somewhere else and then find their way back —
+        // they start an account right here, on the tool they opened.
+        host.innerHTML = signInHTML(
+          "Want this " + label + " waiting for you next time?",
+          "Enter your email and we’ll send a sign-in link. It brings you straight " +
+          "back to this page, and saving turns on here automatically."
+        );
+        wireSignIn(host);
         return;
       }
 
@@ -579,7 +654,9 @@ window.AFWCloud = (function () {
             var href = t.href ? t.href + "?open=" + encodeURIComponent(r.id) : null;
             return '<div class="afwc-row"><div class="afwc-rt"><b>' + esc(r.title) + '</b>' +
               '<span>' + esc(t.name || r.tool) + ' · saved ' + esc(niceDate(r.updated_at)) + '</span></div>' +
-              (href ? '<a class="afwc-btn" href="' + esc(href) + '">Open</a>' : '') +
+              // New tab, like every other tool link on the hub — the hub
+              // stays put so they can open a second piece of work next.
+              (href ? '<a class="afwc-btn" href="' + esc(href) + '" target="_blank" rel="noopener">Open</a>' : '') +
               '</div>';
           }).join("") + '</div>';
       }).catch(function (e) {

@@ -21,10 +21,23 @@ window.AFW_CONFIG = {
   SUPABASE_URL: "https://pyavgjemukfiiruawdgg.supabase.co",
   SUPABASE_KEY: "sb_publishable_wJEeHViBVIsoRG9gRikpsw_SOlPWPsj",
 
-  /* Where the emailed magic link returns people to. Resolves
-     against whatever host is serving the file, so the same code
-     works on GitHub Pages and on a local copy. This exact URL
-     must also be listed in Supabase under
-     Authentication -> URL Configuration -> Redirect URLs. */
-  REDIRECT_TO: new URL("./index.html", location.href).href
+  /* Where the emailed magic link returns people to.
+
+     BLANK (the default) means "the page they signed in from".
+     Members can now start an account from any tool, not just the
+     hub, so the link should put them back on the tool they were
+     using — not send them to the front door to find their way
+     back. Set a fixed URL here only if you want every sign-in to
+     land on one page.
+
+     Because that address varies by tool, Supabase needs a WILDCARD
+     on its allow-list: Authentication -> URL Configuration ->
+     Redirect URLs must include
+         https://tools.akronfoodworks.org/**
+         http://localhost:8000/**          (for testing)
+     which is exactly what setup/SETUP-GUIDE.md already tells you
+     to add. A URL that isn't on that list isn't an error — Supabase
+     quietly falls back to the project's Site URL, so the member is
+     still signed in, just not on the same page. */
+  REDIRECT_TO: ""
 };

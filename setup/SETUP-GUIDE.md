@@ -41,26 +41,29 @@ When all six pass, the foundation is proven and every tool conversion rides on i
 
 Each tool already has functions that gather and apply its full state (used by JSON export/import). The conversion is four small additions — the tool's schema and everything else stay untouched:
 
-1. Before `</body>`, add:
+1. Add the shared scripts — before the tool's own inline script if you call `mountToolBar` inside it, otherwise just before `</body>`:
    ```html
    <script src="afw-config.js"></script>
    <script src="afw-cloud.js"></script>
    ```
-2. Add an empty `<div id="afw-account-bar"></div>` near the top of the page.
-3. After the tool's own script, initialize:
+2. Add an empty `<div id="afw-toolbar"></div>` near the top of the page.
+3. After the tool's own script, mount the bar:
    ```js
-   AFWCloud.init({
-     toolId: 'food-cost-builder',          // unique, permanent per tool
-     mount: '#afw-account-bar',
-     getData: collectState,                // the tool's existing export function
-     onData: (data) => applyState(data),   // the tool's existing import function
+   AFWCloud.mountToolBar('#afw-toolbar', {
+     tool:         'food-cost',                 // unique, permanent per tool
+     label:        'cost card',                 // used in the button text
+     serialize:    () => collectState(),        // the tool's existing export function
+     deserialize:  (data) => applyState(data),  // the tool's existing import function
+     suggestTitle: () => 'My cost card'
    });
    ```
-4. Call `AFWCloud.scheduleSave()` wherever the tool's state changes (usually the same place any "recalculate" or input handler already fires).
+4. Add the tool to the `mountSavedWork` map at the bottom of `index.html`, using the same `tool` key, so saved work on the hub gets a working Open button.
 
-`toolId` values, once chosen, should never change — they're the key member data is filed under. Suggested set: `hours-that-pay`, `food-cost-builder`, `sop-builder`, `readiness-inventory`, `first-order-sprint`.
+That's it — there's no autosave call to wire up. Saving is an explicit button in the bar, and signed-out visitors see the email sign-in form in that same bar, so an account can be started from any tool rather than only from the hub.
 
-**Hours-That-Pay (public tool):** identical integration. Signed-out visitors get the full calculator with nothing gated; the account bar simply offers "save your scenario" to anyone who wants it. Public and member modes are the same code path.
+`tool` values, once chosen, should never change — they're the key member data is filed under. In use today: `hours-that-pay`, `food-cost`, `sop-builder`, `presell-orders`, `first-order-sprint`, `cloud-save-demo`.
+
+**Hours-That-Pay (public tool):** identical integration. Signed-out visitors get the full calculator with nothing gated; the bar simply offers "save your scenario" to anyone who wants it. Public and member modes are the same code path.
 
 ## Ongoing costs & limits
 

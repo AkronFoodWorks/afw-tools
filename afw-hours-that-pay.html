@@ -257,7 +257,7 @@
 
     <div class="notes" id="notes"></div>
 
-    <div id="afw-account-bar" style="margin-top:18px"></div>
+    <div id="afw-toolbar" style="margin-top:18px"></div>
   </section>
 
   <footer>
@@ -283,7 +283,10 @@
 
   const $=id=>document.getElementById(id);
   const ids=['unit','space','offpeak','mobile','hrs','sessions','perSession','price','cost','storage'];
-  const onInput=()=>{recalc(); if(typeof AFWCloud!=='undefined') AFWCloud.scheduleSave();};
+  /* Saving is explicit (the Save button in the cloud bar below), not
+     an autosave on every keystroke — AFWCloud.scheduleSave no longer
+     exists, and calling it here threw on every field change. */
+  const onInput=()=>recalc();
   ids.forEach(i=>{const el=$(i);el.addEventListener('input',onInput);el.addEventListener('change',onInput);});
 
   const money=n=>'$'+n.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
@@ -407,19 +410,18 @@
     });
     recalc();
   }
-  if(typeof AFWCloud!=='undefined'){
-    const defaultState=JSON.stringify(collectState());
-    AFWCloud.init({
-      toolId:'hours-that-pay',
-      mount:'#afw-account-bar',
-      getData:collectState,
-      onData:(data,meta)=>{
-        // Only ask before replacing if they've already changed something this visit.
-        if(JSON.stringify(collectState())===defaultState
-           || confirm('Load your saved scenario from '+new Date(meta.updatedAt).toLocaleString()+'? This replaces the numbers on screen.')){
-          applyState(data);
-        }
-      },
+  /* mountToolBar is the API afw-cloud.js actually exports. The old
+     AFWCloud.init/scheduleSave autosave pair was removed from the
+     shared module, which is why this bar used to come up empty.
+     Signed out, the bar shows the email sign-in form right here —
+     no trip to the hub. Signed in, it saves and reopens scenarios. */
+  if(typeof AFWCloud!=='undefined' && typeof AFWCloud.mountToolBar==='function'){
+    AFWCloud.mountToolBar('#afw-toolbar',{
+      tool:         'hours-that-pay',   /* must match the key in index.html */
+      label:        'scenario',
+      serialize:    () => collectState(),
+      deserialize:  (data) => applyState(data),
+      suggestTitle: () => 'My kitchen hours'
     });
   }
 })();
