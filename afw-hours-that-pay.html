@@ -164,6 +164,11 @@
     <p class="lede">Punch in your numbers and this tells you the one number that matters most: <b>how many orders to pre-sell before you book a session</b> — plus your profit per order and the plan that fits.</p>
   </header>
 
+  <!-- Cloud save bar. Signed out it offers the email sign-in; signed in
+       it saves this scenario. Sits at the top, like every other tool,
+       so nobody has to reach the bottom to find out saving exists. -->
+  <div id="afw-toolbar" style="margin:18px 0 0"></div>
+
   <section class="card reveal">
     <h2>Your numbers</h2>
     <p class="sub">No wrong answers — estimate, then adjust. It updates as you type.</p>
@@ -256,8 +261,6 @@
     </div>
 
     <div class="notes" id="notes"></div>
-
-    <div id="afw-toolbar" style="margin-top:18px"></div>
   </section>
 
   <footer>
@@ -283,9 +286,9 @@
 
   const $=id=>document.getElementById(id);
   const ids=['unit','space','offpeak','mobile','hrs','sessions','perSession','price','cost','storage'];
-  /* Saving is explicit (the Save button in the cloud bar below), not
-     an autosave on every keystroke — AFWCloud.scheduleSave no longer
-     exists, and calling it here threw on every field change. */
+  /* Saving is explicit (the Save button in the cloud bar at the top of
+     the page), not an autosave on every keystroke — AFWCloud.scheduleSave
+     no longer exists, and calling it here threw on every field change. */
   const onInput=()=>recalc();
   ids.forEach(i=>{const el=$(i);el.addEventListener('input',onInput);el.addEventListener('change',onInput);});
 
