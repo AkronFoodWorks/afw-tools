@@ -26,7 +26,7 @@
     font-size: 30px; margin: 0 0 4px;
   }
   .sub { margin: 0 0 20px; opacity: .8; }
-  #afw-account-bar { margin-bottom: 20px; }
+  #afw-toolbar { margin-bottom: 20px; }
   .card {
     background: #fff; border: 1px solid rgba(31,61,43,.25);
     border-radius: 12px; padding: 20px; margin-bottom: 16px;
@@ -57,7 +57,7 @@
   <h1>Cloud Save Demo</h1>
   <p class="sub">A stand-in tool proving the pattern: works without an account, saves to the cloud when signed in, and JSON export/import always remains as the offline fallback.</p>
 
-  <div id="afw-account-bar"></div>
+  <div id="afw-toolbar"></div>
 
   <div class="card">
     <label for="bizName">Business name</label>
@@ -83,7 +83,7 @@
       <button type="button" class="secondary" id="btnImport">Import JSON</button>
       <input type="file" id="fileImport" accept=".json,application/json" style="display:none">
     </div>
-    <p class="hint">Type in any field — if you're signed in, watch the status flip to "Saving…" then "Saved ✓". Reload the page or open it on another device to see your data come back.</p>
+    <p class="hint">Type in any field, then use “Save to my account” in the bar above. Reload the page or open it on another device, choose “My saved drafts”, and your work comes back.</p>
   </div>
 </div>
 
@@ -110,20 +110,22 @@
   }
 
   // --- Wire up cloud save (login always optional) ---
-  AFWCloud.init({
-    toolId: 'cloud-save-demo',
-    mount: '#afw-account-bar',
-    getData: collectToolState,
-    onData: (cloudData, meta) => {
+  // This is the reference integration: mountToolBar is the API
+  // afw-cloud.js exports. Signed out, the bar renders the email
+  // sign-in form right here on the tool — the same one the hub
+  // shows. Signed in, it saves, reopens, and deletes saved work.
+  // Saving is explicit rather than an autosave on every keystroke.
+  AFWCloud.mountToolBar('#afw-toolbar', {
+    tool:         'cloud-save-demo',   /* stable key, never rename */
+    label:        'draft',
+    serialize:    () => collectToolState(),
+    deserialize:  (data) => {
       // If the person already typed something this session, don't clobber it silently.
-      if (formIsEmpty() || confirm('Load your saved version from ' + new Date(meta.updatedAt).toLocaleString() + '? This replaces what is on screen.')) {
-        applyToolState(cloudData);
+      if (formIsEmpty() || confirm('Load this saved version? It replaces what is on screen.')) {
+        applyToolState(data);
       }
     },
-  });
-
-  FIELDS.forEach(id => {
-    document.getElementById(id).addEventListener('input', () => AFWCloud.scheduleSave());
+    suggestTitle: () => document.getElementById('bizName').value || 'My draft'
   });
 
   // --- JSON export/import: unchanged from the existing tool pattern ---
@@ -147,7 +149,6 @@
     reader.onload = () => {
       try {
         applyToolState(JSON.parse(reader.result));
-        AFWCloud.scheduleSave(); // imported data syncs up if signed in
       } catch (err) {
         alert('That file is not valid JSON.');
       }

@@ -20,28 +20,43 @@ stays as the offline fallback.**
 The module's public API:
 
 ```js
-AFWCloud.init({
-  toolId: 'permanent-unique-id',   // NEVER change once live
-  mount: '#afw-account-bar',       // selector where the account bar renders
-  getData: () => stateObject,      // returns the tool's full state as JSON
-  onData: (data, meta) => {...},   // applies a loaded state; meta.updatedAt
+AFWCloud.mountToolBar('#afw-toolbar', {
+  tool:         'permanent-unique-id',  // NEVER change once live
+  label:        'cost card',            // used in the button text, e.g. "My saved cost cards"
+  serialize:    () => stateObject,      // the tool's full state as a plain object
+  deserialize:  (data) => applyState(data),  // applies a loaded state
+  suggestTitle: () => 'My cost card'    // default name in the Save dialog
 });
-AFWCloud.scheduleSave();           // debounced autosave; no-op signed out
-AFWCloud.isSignedIn();             // boolean, if conditional UI is wanted
+
+AFWCloud.mountAccountBar('#afw-account');  // hub only — sign-in on its own
+AFWCloud.mountSavedWork('#afw-saved', {}); // hub only — everything they've saved
+AFWCloud.status();                         // 'loading' | 'unconfigured' | 'out' | 'in' | 'error'
 ```
+
+**One bar does everything.** `mountToolBar` renders whichever of these the
+member needs right now: signed out, it shows the *same email sign-in form the
+hub shows*, so an account can be started from any tool — nobody is sent to the
+hub to sign in and then told to come back. Signed in, it becomes Save / Save a
+copy / My saved work. The emailed link returns them to the page they were on.
+
+There is no `AFWCloud.init()` and no `AFWCloud.scheduleSave()`. An earlier
+draft of this spec described that autosave pair; it was replaced by the
+explicit save bar above. Saving is always a button press, never a background
+write.
 
 ## The conversion — exactly five changes
 
-1. **Scripts.** Immediately before `</body>` (before the tool's own inline
-   script if `AFWCloud.init` is called inside it — init must run after the
-   module loads):
+1. **Scripts.** Before the tool's own inline script if `mountToolBar` is
+   called inside it (the module has to exist by then); otherwise immediately
+   before `</body>`:
    ```html
    <script src="afw-config.js"></script>
    <script src="afw-cloud.js"></script>
    ```
 
-2. **Account bar mount.** Add `<div id="afw-account-bar"></div>` where the
-   sign-in bar should appear (placement guidance per tool below).
+2. **Tool bar mount.** Add `<div id="afw-toolbar"></div>` where the bar should
+   appear — near the top, above the tool's first input (placement guidance per
+   tool below). On a tool that prints, give it `class="no-print"`.
 
 3. **Palette bridge.** The account bar styles itself with `--afw-cream`,
    `--afw-forest`, `--afw-amber` variables (with generic fallbacks). AFW
