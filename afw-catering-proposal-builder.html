@@ -699,7 +699,7 @@
     return [l1, l2];
   }
   function optionHeader(st, o, idx){
-    let name = String(o.name || '').trim() || (st.options.length > 1 ? `Option ${idx + 1}` : '[Option name]');
+    let name = String(o.name || '').trim() || '[Package name]';
     if (!/\boption$/i.test(name)) name += ' option';
     const g = num(st.event.guests);
     return `${name} — ${g > 0 ? g + ' ' + plural(g,'guest') : '[number] guests'}`;
@@ -911,7 +911,7 @@
     add(!qty.length, 'Quantities are rounded up and totals add up', qty.join(' · ') || 'Pans are rounded up and every total is added for you.', 1);
 
     const pgOk = g > 0 && opts.every(o => optionCalc(st, o).allComplete);
-    add(pgOk, 'A per-person price is shown', pgOk ? 'Shown on every option’s Total line.' : 'Needs the guest count and every price filled in.', 1);
+    add(pgOk, 'A per-person price is shown', pgOk ? 'Shown on every package’s Total line.' : 'Needs the guest count and every price filled in.', 1);
 
     const al = [], unconf = [];
     opts.forEach(o => optionItems(o).forEach(it => {
@@ -942,7 +942,7 @@
         st.sentToAfw ? 'Marked as sent.' : 'Send it, then tick “I sent it” below. Watch the deadline in the referral email.', 4);
     return res;
   }
-  function optionLabel(o){ return (String(o.name || '').trim() || 'This option'); }
+  function optionLabel(o){ return (String(o.name || '').trim() || 'This package'); }
   function itemLabel(it){ return String(it.name || '').trim() || 'Unnamed dish'; }
 
   // ================= save / load =================
@@ -1135,22 +1135,27 @@
     const oi = ui.opt, o = S.options[oi];
     $('step2').innerHTML = `
       <div class="card">
-        <h2 id="h-step2">Build the menu</h2>
-        <p class="sub">Offer two or three options: one that fits the client’s budget and one a step up. Each option is its own complete menu.</p>
-        <div class="opt-tabs" role="group" aria-label="Options">
-          ${S.options.map((x, i) => `<button type="button" class="chip" data-act="selOpt" data-val="${i}" ${pressed(i === oi)}>${esc(String(x.name || '').trim() || 'Option ' + (i + 1))}</button>`).join('')}
-          ${S.options.length < 3 ? `<button type="button" class="chip" data-act="addOpt">+ New option</button>` : ''}
+        <h2 id="h-step2">Build your menu</h2>
+        <p class="sub">A <b>package</b> is one complete menu for this event: the dishes, sizes, and prices. Start with one. You can add a second or third package so the client can choose — like one that fits their budget and one with a little extra.</p>
+        ${S.options.length > 1 ? `<div class="opt-tabs" role="group" aria-label="Your packages">
+          ${S.options.map((x, i) => `<button type="button" class="chip" data-act="selOpt" data-val="${i}" ${pressed(i === oi)}>${esc(String(x.name || '').trim() || 'Package ' + (i + 1))}</button>`).join('')}
         </div>
-        ${inputField({ path:`options.${oi}.name`, label:'Option name', placeholder: oi === 0 ? 'e.g., Classic' : 'e.g., Plus', hint:'Short and plain — “Classic”, “Plus”, “Deluxe”.' })}
-        <div class="seg" style="margin-top:10px">
-          ${S.options.length < 3 ? `<button type="button" data-act="dupOpt">Copy this option to start a new one</button>` : ''}
-          ${S.options.length > 1 ? `<button type="button" data-act="rmOpt" class="btn-danger" style="border:none">Remove this option</button>` : ''}
-        </div>
+        <p class="hint" style="margin:-6px 0 12px">Tap a package to edit it.</p>` : ''}
+        ${inputField({ path:`options.${oi}.name`, label:'Give this package a short name', placeholder: oi === 0 ? 'e.g., Classic' : 'e.g., Plus', hint:'The client sees it as “Classic option — 40 guests”. Keep it to a word or two: Classic, Plus, Deluxe.' })}
+        ${S.options.length > 1 ? `<div class="seg" style="margin-top:10px"><button type="button" data-act="rmOpt" class="btn-danger" style="border:none">Remove this package</button></div>` : ''}
         <div id="items">${o.items.map((it, ii) => itemCard(oi, ii, it)).join('')}</div>
         <button type="button" class="btn btn-dashed" style="margin-top:14px" data-act="addItem">+ Add a dish</button>
         <div class="total-box" id="optTotal"></div>
         <div id="budgetBox"></div>
         <div id="dietBox"></div>
+        ${S.options.length < 3 ? `<div class="soft" style="margin-top:16px">
+          <b>Want to give the client a choice?</b> Add another package — up to 3 in all.
+          <div class="seg" style="margin-top:10px">
+            <button type="button" data-act="dupOpt">Copy this package and change it</button>
+            <button type="button" data-act="addOpt">Start a blank package</button>
+          </div>
+          <span class="hint">Copying is quickest for a step up: keep everything and add dessert or an upgrade.</span>
+        </div>` : ''}
         <p class="links">Not sure what to charge? Try the <a href="./afw-food-cost-pricing.html" target="_blank" rel="noopener">Food Cost &amp; Pricing Tool<span class="sr-only"> (opens in a new tab)</span></a>.</p>
       </div>`;
   }
@@ -1356,9 +1361,9 @@
                 `<div class="field"><span class="lbl">Tax the paid extras too?</span>${seg('tax.includeExtras', [['true','Yes'],['false','No, food only']], String(S.tax.includeExtras), 'bool')}</div>`}` : ''}
         </div>
 
-        ${S.options.length > 1 ? `<div class="field"><label for="depOpt">Work out the deposit using</label>
+        ${S.options.length > 1 ? `<div class="field"><label for="depOpt">Figure the deposit from which package?</label>
           <select id="depOpt" data-bind="terms.depositOptionId" data-type="text">
-            ${S.options.map((o, i) => `<option value="${o.id}"${depositOption(S) === o ? ' selected' : ''}>${esc(String(o.name || '').trim() || 'Option ' + (i + 1))}</option>`).join('')}
+            ${S.options.map((o, i) => `<option value="${o.id}"${depositOption(S) === o ? ' selected' : ''}>${esc(String(o.name || '').trim() || 'Package ' + (i + 1))}</option>`).join('')}
           </select></div>` : ''}
         <dl class="dates" id="termDates"></dl>
         ${wordingBox('payment', 'Payment terms')}
@@ -1454,7 +1459,7 @@
 
     // option total, budget, dietary
     const oc = optionCalc(S, o);
-    const name = String(o.name || '').trim() || 'This option';
+    const name = String(o.name || '').trim() || 'This package';
     setHTML('optTotal', oc.rows.length
       ? `<div class="big">${oc.allComplete ? money(oc.total) : money(oc.food) + '…'}</div>
          <p>${esc(name)} total${oc.extras.length || S.tax.mode === 'line' ? ', all in' : ''} · ${oc.allComplete && oc.perGuest !== null ? money2(oc.perGuest) + ' per guest' : 'per guest shows once every price and the guest count are in'}</p>`
@@ -1463,7 +1468,7 @@
     if (budget !== null && oc.allComplete && oc.perGuest !== null){
       const diff = oc.perGuest - budget;
       setHTML('budgetBox', `<div class="soft ${diff <= 0 ? 'ok' : 'warn'}">Budget check (info only): ${money2(oc.perGuest)} per guest is
-        <b>${diff === 0 ? 'right on' : money2(Math.abs(diff)) + (diff < 0 ? ' under' : ' over')}</b> the client’s ${money2(budget)} budget.${diff > 0 ? ' That’s fine for a step-up option.' : ''}</div>`);
+        <b>${diff === 0 ? 'right on' : money2(Math.abs(diff)) + (diff < 0 ? ' under' : ' over')}</b> the client’s ${money2(budget)} budget.${diff > 0 ? ' That’s fine for a step-up package.' : ''}</div>`);
     } else setHTML('budgetBox', '');
     const diet = dietaryCheck(S).filter(x => x.option === o);
     const other = num(S.event.dietary.other);
@@ -1489,7 +1494,7 @@
     // term dates
     const f = termFacts(S);
     const rows = [];
-    const dname = String(f.option.name || '').trim() || 'this option';
+    const dname = String(f.option.name || '').trim() || 'this package';
     if (f.deposit !== null && S.terms.deposit.type !== 'none')
       rows.push(['Deposit', `${money(f.deposit)}${S.terms.deposit.type === 'percent' && f.optionTotal !== null ? ` (${numText(num(S.terms.deposit.value))}% of ${esc(dname)}’s ${money(f.optionTotal)})` : ''}` +
         (f.depositDue ? ` — due ${niceDate(f.depositDue)}` : f.depositDueText ? ` — due ${f.depositDueText}` : '')]);
@@ -1541,7 +1546,7 @@
     else {
       if (/^options\.\d+\.name$/.test(el.dataset.bind)){
         const btn = document.querySelectorAll('.opt-tabs .chip')[ui.opt];
-        if (btn) btn.textContent = String(el.value).trim() || 'Option ' + (ui.opt + 1);
+        if (btn) btn.textContent = String(el.value).trim() || 'Package ' + (ui.opt + 1);
       }
       refresh();
     }
@@ -1604,10 +1609,10 @@
         const c = clone(o); c.id = uid('o'); c.name = '';
         c.items.forEach(it => { it.id = uid('i'); });
         S.options.push(c); ui.opt = S.options.length - 1; renderAll();
-        flash('Copied. Name the new option and add what makes it a step up.');
+        flash('Copied. Give the new package a name and add what makes it a step up.');
       } break;
       case 'rmOpt':
-        if (S.options.length > 1 && window.confirm(`Remove the “${optionLabel(o)}” option and its dishes?`)){
+        if (S.options.length > 1 && window.confirm(`Remove the “${optionLabel(o)}” package and its dishes?`)){
           S.options.splice(ui.opt, 1); ui.opt = 0; renderAll();
         } break;
       case 'addItem': o.items.push(blankItem()); renderAll(); break;
