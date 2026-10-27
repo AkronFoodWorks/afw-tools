@@ -62,21 +62,22 @@
       2026-10, the program had no prior definition).
       "N days before the event" always means calendar days.
 
-  · PAN PRICING PANEL ("Help me price this pan"): a straight
-    port of the Pan Pricing Calculator tab in
+  · PAN PRICING PANEL ("Help me price this pan"): the cost and
+    price columns of the Pan Pricing Calculator tab in
     afw-pan-pricing-toolkit.xlsx, same blank-cell rules:
-        food wt      = full − empty
-        servings     = food wt ÷ serving oz        (NOT rounded)
         total cost   = ingredients + labor + packaging
         cost/serving = total cost ÷ servings
         price/serv.  = cost/serving ÷ (1 − margin)  (blank if margin ≥ 100%)
         price/pan    = price/serving × servings
-      Serving-size presets are the Serving Size Guide tab's
-      ranges, verbatim. The ONE step the workbook doesn't have:
-      "Use these numbers" puts serves = servings ROUNDED DOWN to
-      whole plates (a proposal can't say "serves 34.29") and
-      price per pan rounded to the cent. If the workbook changes,
-      update panCalc() and SERVING_GUIDE together.
+    The workbook's weigh-the-pan step (servings = (full − empty) ÷
+    serving oz) was REMOVED at staff request (2026-10) as too much
+    for this tool; servings = the dish's own "serves" number. The
+    portion-size picker (Serving Size Guide ranges verbatim, plus
+    "Other" for a member's own oz) is guidance for choosing that
+    number and doesn't enter the math. "Use this price" fills price
+    per pan only, rounded to the cent. Old files may still carry
+    emptyOz/fullOz; they're kept and ignored. If the toolkit is
+    revised, update panCalc() and SERVING_GUIDE together.
 
   · DATA MODEL: no browser storage (same reasoning as the other
     tools). collectState()/applyState() feed both the JSON
@@ -512,7 +513,7 @@
 
   // ================= state =================
   function blankCharge(type){ return { type:type, amount:null, rate:null, hours:null, staff:null, minHours:null, miles:null }; }
-  function blankPanCalc(){ return { emptyOz:null, fullOz:null, servingOz:null, guide:'', ingredients:null, labor:null, packaging:null, marginPct:null }; }
+  function blankPanCalc(){ return { servingOz:null, guide:'', ingredients:null, labor:null, packaging:null, marginPct:null }; }
   function blankItem(){
     return { id:uid('i'), name:'', size:'', sizeOther:'', serves:null, pricePerPan:null,
              forWho:'all', forGuests:null, pansOverride:null,
@@ -550,26 +551,23 @@
   const ui = { step:0, opt:0, open:{} };   // not saved
 
   // ================= the math =================
-  function panCalc(pc){
-    // Pan Pricing Calculator tab, row by row, same "" rules as the workbook.
+  function panCalc(pc, serves){
+    // Pan Pricing Calculator tab (cost + price columns), same "" rules as
+    // the workbook. G = servings per pan = the dish's "serves" number.
     pc = pc || {};
-    const C = num(pc.emptyOz), D = num(pc.fullOz), F = num(pc.servingOz);
+    const G = num(serves) > 0 ? num(serves) : null;
     const H = num(pc.ingredients), I = num(pc.labor), J = num(pc.packaging);
     const M = num(pc.marginPct) === null ? null : num(pc.marginPct) / 100;
-    const E = (C === null || D === null) ? null : D - C;
-    const G = (E === null || F === null || F === 0) ? null : E / F;
     const K = (H === null && I === null && J === null) ? null : (H || 0) + (I || 0) + (J || 0);
-    const L = (G === null || G === 0 || K === null) ? null : K / G;
+    const L = (G === null || K === null) ? null : K / G;
     const N = (L === null || M === null || M >= 1) ? null : L / (1 - M);
     const O = (N === null || G === null) ? null : N * G;
-    return { foodWt:E, servings:G, totalCost:K, costPerServing:L, pricePerServing:N, pricePerPan:O };
+    return { servings:G, totalCost:K, costPerServing:L, pricePerServing:N, pricePerPan:O };
   }
-  // What "Use these numbers" writes into the item.
+  // What "Use this price" writes into the item: the price per pan, to the cent.
   function panCalcToItem(r){
-    if (!r || r.servings === null || r.pricePerPan === null) return null;
-    const serves = Math.floor(r.servings + 1e-9);
-    if (serves < 1) return null;
-    return { serves:serves, pricePerPan:Math.round(r.pricePerPan * 100) / 100 };
+    if (!r || r.pricePerPan === null) return null;
+    return { pricePerPan:Math.round(r.pricePerPan * 100) / 100 };
   }
 
   function isBlankItem(it){
@@ -1194,35 +1192,33 @@
   function panPanel(oi, ii, it){
     const p = `options.${oi}.items.${ii}.panCalc`;
     const pc = it.panCalc;
-    const g = SERVING_GUIDE[num(pc.guide)];
+    const other = pc.guide === 'other';
+    const g = other ? null : SERVING_GUIDE[num(pc.guide)];
     const k = 'pan_' + it.id;
+    const unit = countWord(it, 1);
+    const selId = `f_${p.replace(/\./g,'_')}_guide`;
     return `<details class="panel" data-open-key="${k}"${ui.open[k] ? ' open' : ''}>
-      <summary>Help me price this ${countWord(it, 1)}</summary>
+      <summary>Help me price this ${unit}</summary>
       <div class="panel-body">
-        <p class="sub">From the Pan Pricing Toolkit: weigh the pan, pick a serving size, add your costs and margin. A $15 kitchen scale is all you need.</p>
-        <p class="pc-step">1 · Weigh the pan</p>
-        <div class="grid2">
-          ${inputField({ path:p + '.emptyOz', label:'Empty pan (oz)', type:'num' })}
-          ${inputField({ path:p + '.fullOz', label:'Full pan (oz)', type:'num', hint:'Packed the way you’d sell it. 1 lb = 16 oz.' })}
-        </div>
-        <p class="pc-out" id="pcFood_${it.id}"></p>
-        <p class="pc-step">2 · Pick a serving size</p>
-        <div class="field"><label for="f_${p.replace(/\./g,'_')}_guide">Serving size guide</label>
-          <select id="f_${p.replace(/\./g,'_')}_guide" data-bind="${p}.guide" data-type="text" data-rerender="1">
+        <p class="sub">From the Pan Pricing Toolkit: pick a portion size, then add your costs and the margin you want.</p>
+        <p class="pc-step">1 · Portion size</p>
+        <div class="field"><label for="${selId}">What kind of dish is it?</label>
+          <select id="${selId}" data-bind="${p}.guide" data-type="text" data-rerender="1">
             <option value="">Choose a dish type…</option>
             ${SERVING_GUIDE.map((s, i) => `<option value="${i}"${String(pc.guide) === String(i) ? ' selected' : ''}>${esc(s.type)} (${s.lo} – ${s.hi} oz)</option>`).join('')}
+            <option value="other"${other ? ' selected' : ''}>Other — I’ll enter my own</option>
           </select>
-          ${g ? `<p class="guide-note">Typical: ${g.lo} – ${g.hi} oz. ${esc(g.note)} Tap one:</p>
-            <div class="seg" style="margin-top:6px">${range(g.lo, g.hi).map(n => `<button type="button" data-act="set" data-path="${p}.servingOz" data-val="${n}" data-type="num" ${pressed(num(pc.servingOz) === n)}>${n} oz</button>`).join('')}</div>` : ''}
-          <span class="hint">Plated main? Use the bigger number. Buffet with lots of choices? The smaller one.</span>
+          ${g ? `<p class="guide-note">Typical: ${g.lo} – ${g.hi} oz a portion. ${esc(g.note)} Tap one:</p>
+            <div class="seg" style="margin-top:6px">${range(g.lo, g.hi).map(n => `<button type="button" data-act="set" data-path="${p}.servingOz" data-val="${n}" data-type="num" ${pressed(num(pc.servingOz) === n)}>${n} oz</button>`).join('')}</div>
+            <span class="hint">Plated main? Use the bigger number. Buffet with lots of choices? The smaller one.</span>` : ''}
         </div>
-        ${inputField({ path:p + '.servingOz', label:'Serving size (oz)', type:'num' })}
+        ${other ? inputField({ path:p + '.servingOz', label:'Your portion size (oz)', type:'num', placeholder:'e.g., 6', hint:'1 cup of cooked rice is about 6–7 oz.' }) : ''}
         <p class="pc-out" id="pcServ_${it.id}"></p>
-        <p class="pc-step">3 · Your costs for one pan</p>
+        <p class="pc-step">2 · Your costs for one ${unit}</p>
         <div class="grid2">
-          ${inputField({ path:p + '.ingredients', label:'Ingredients for this pan', type:'num', pre:'$' })}
-          ${inputField({ path:p + '.labor', label:'Labor for this pan', type:'num', pre:'$', hint:'What you pay yourself or a helper to make it.' })}
-          ${inputField({ path:p + '.packaging', label:'Packaging for this pan', type:'num', pre:'$', hint:'Foil pan, lid, label.' })}
+          ${inputField({ path:p + '.ingredients', label:`Ingredients for this ${unit}`, type:'num', pre:'$' })}
+          ${inputField({ path:p + '.labor', label:`Labor for this ${unit}`, type:'num', pre:'$', hint:'What you pay yourself or a helper to make it.' })}
+          ${inputField({ path:p + '.packaging', label:`Packaging for this ${unit}`, type:'num', pre:'$', hint:'Foil pan, lid, label.' })}
           ${inputField({ path:p + '.marginPct', label:'Margin you want', type:'num', post:'%', hint:'The share of the price you keep after costs. At 40%, a $100 pan leaves you $40.' })}
         </div>
         <p class="pc-out" id="pcCost_${it.id}"></p>
@@ -1440,21 +1436,25 @@
         strip.classList.toggle('warn', c.short);
       }
       // pan pricing panel
-      const r = panCalc(it.panCalc);
-      const f2 = n => n === null ? '—' : (Math.round(n * 100) / 100).toLocaleString('en-US', { maximumFractionDigits:2 });
+      const r = panCalc(it.panCalc, it.serves);
       const $2 = n => n === null ? '—' : '$' + (Math.round(n * 100) / 100).toFixed(2);
-      setHTML('pcFood_' + it.id, `Food weight: <b>${r.foodWt !== null ? f2(r.foodWt) + ' oz' : '—'}</b>` +
-        (r.foodWt !== null && r.foodWt <= 0 ? ' <span class="warn-text">— the full pan should weigh more than the empty one.</span>' : ''));
-      setHTML('pcServ_' + it.id, `Servings per pan: <b>${f2(r.servings)}</b>`);
+      const unit1 = countWord(it, 1);
+      const oz = num(it.panCalc.servingOz);
+      setHTML('pcServ_' + it.id, oz !== null
+        ? `Portion: <b>${numText(oz)} oz</b>. Use it to decide how many people one ${unit1} serves` +
+          (r.servings !== null ? ` — you said <b>${numText(r.servings)}</b>.` : ' — fill that in above.')
+        : '');
       setHTML('pcCost_' + it.id, `Total cost <b>${$2(r.totalCost)}</b> · Cost per serving <b>${$2(r.costPerServing)}</b><br>
-        Price per serving <b>${$2(r.pricePerServing)}</b> · Price per pan <b>${$2(r.pricePerPan)}</b>` +
+        Price per serving <b>${$2(r.pricePerServing)}</b> · Price per ${unit1} <b>${$2(r.pricePerPan)}</b>` +
         (num(it.panCalc.marginPct) !== null && num(it.panCalc.marginPct) >= 100 ? '<br><span class="warn-text">Margin has to be under 100%.</span>' : ''));
       const use = panCalcToItem(r);
       setHTML('pcUse_' + it.id, use
-        ? `For your proposal: <b>serves ${use.serves}</b> · <b>${money2(Math.round(use.pricePerPan * 100))} per pan</b><br>
-           <span class="hint">Servings are rounded down to whole plates. You can round the price after.</span>
-           <button type="button" class="btn btn-primary" style="margin-top:10px" data-act="usePan" data-val="${it.id}">Use these numbers</button>`
-        : 'Fill in the weights, serving size, costs, and margin to get a price per pan.');
+        ? `Suggested price: <b>${money2(Math.round(use.pricePerPan * 100))} per ${unit1}</b><br>
+           <span class="hint">You can round it after.</span>
+           <button type="button" class="btn btn-primary" style="margin-top:10px" data-act="usePan" data-val="${it.id}">Use this price</button>`
+        : r.servings === null
+          ? `First fill in how many people one ${unit1} serves (above).`
+          : 'Add your costs and margin to get a suggested price.');
     });
 
     // option total, budget, dietary
@@ -1626,8 +1626,8 @@
       }
       case 'usePan': {
         const it = o.items.find(x => x.id === val);
-        const use = it && panCalcToItem(panCalc(it.panCalc));
-        if (use){ it.serves = use.serves; it.pricePerPan = use.pricePerPan; renderAll(); flash(`Filled in: serves ${use.serves}, ${money2(Math.round(use.pricePerPan * 100))} per pan.`); }
+        const use = it && panCalcToItem(panCalc(it.panCalc, it.serves));
+        if (use){ it.pricePerPan = use.pricePerPan; renderAll(); flash(`Price filled in: ${money2(Math.round(use.pricePerPan * 100))} per ${countWord(it, 1)}.`); }
         break;
       }
       case 'addExtra': S.extras.push({ id:uid('x'), label:'', preset:false, status:'', charge:blankCharge('flat') }); renderAll(); break;

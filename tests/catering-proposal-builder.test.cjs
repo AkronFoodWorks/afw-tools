@@ -228,31 +228,56 @@ test('Deposit and date math', () => {
   assert.equal(iso(win.CPB.termFacts(st, today).depositDue), '2026-11-18');
 });
 
-test('Pan pricing panel matches the workbook examples exactly', () => {
+test('Pan pricing panel matches the workbook cost and price columns', () => {
   const win = load();
   const pc = win.CPB.panCalc;
   const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} vs ${b}`);
-  // Jollof Chicken & Rice row of the Pan Pricing Calculator tab
-  const j = pc({ emptyOz:90, fullOz:330, servingOz:7, ingredients:34, labor:18, packaging:6, marginPct:40 });
-  assert.equal(j.foodWt, 240);
-  close(j.servings, 34.2857142857143);
-  assert.equal(j.totalCost, 58);
-  close(j.costPerServing, 1.69166666666667);
-  close(j.pricePerServing, 2.81944444444444);
-  close(j.pricePerPan, 96.6666666666667);
-  assert.deepEqual(plain(win.CPB.panCalcToItem(j)), { serves:34, pricePerPan:96.67 });
-  // Beef Lasagna (9×13)
-  const l = pc({ emptyOz:80, fullOz:260, servingOz:9, ingredients:22, labor:15, packaging:5, marginPct:45 });
-  assert.equal(l.servings, 20);
+  // Beef Lasagna (9×13) row of the Pan Pricing Calculator tab: 20 servings
+  const l = pc({ ingredients:22, labor:15, packaging:5, marginPct:45 }, 20);
+  assert.equal(l.totalCost, 42);
   close(l.costPerServing, 2.1);
+  close(l.pricePerServing, 3.81818181818182);
   close(l.pricePerPan, 76.3636363636364);
-  // blank rules: margin ≥ 100% → blank; no costs → blank
-  assert.equal(pc({ emptyOz:80, fullOz:260, servingOz:9, ingredients:22, marginPct:100 }).pricePerServing, null);
-  assert.equal(pc({ emptyOz:80, fullOz:260, servingOz:9 }).totalCost, null);
-  assert.equal(pc({ emptyOz:80, servingOz:9 }).servings, null);
+  assert.deepEqual(plain(win.CPB.panCalcToItem(l)), { pricePerPan:76.36 });
+  // Jollof row's costs and margin, with the member's own serves number
+  const j = pc({ ingredients:34, labor:18, packaging:6, marginPct:40 }, 34);
+  close(j.costPerServing, 58 / 34);
+  close(j.pricePerPan, 58 / 0.6);                    // = cost ÷ (1 − margin) for the pan
+  assert.deepEqual(plain(win.CPB.panCalcToItem(j)), { pricePerPan:96.67 });
+  // blank rules: no serves → blank; margin ≥ 100% → blank; no costs → blank
+  assert.equal(pc({ ingredients:22, marginPct:45 }, null).pricePerPan, null);
+  assert.equal(pc({ ingredients:22, marginPct:100 }, 20).pricePerServing, null);
+  assert.equal(pc({ marginPct:45 }, 20).totalCost, null);
+  // portion size never enters the math
+  assert.equal(pc({ ingredients:22, labor:15, packaging:5, marginPct:45, servingOz:3 }, 20).pricePerPan, l.pricePerPan);
   // the Serving Size Guide ranges
   assert.equal(win.CPB.SERVING_GUIDE.length, 8);
   assert.deepEqual([win.CPB.SERVING_GUIDE[4].lo, win.CPB.SERVING_GUIDE[4].hi], [8, 10]);
+});
+
+test('Use this price fills the price only; Other portion size takes its own oz', () => {
+  const win = load();
+  sampleIn(win);
+  const doc = win.document;
+  doc.querySelector('#stepnav [data-val="1"]').click();
+  const it = () => win.CPB.state.options[0].items[0];
+  Object.assign(it().panCalc, { ingredients:22, labor:15, packaging:5, marginPct:45 });
+  win.CPB.renderAll();
+  doc.querySelector(`[data-act="usePan"][data-val="${it().id}"]`).click();
+  assert.equal(it().serves, 10);                     // unchanged
+  assert.equal(it().pricePerPan, 76.36);             // 42 ÷ 0.55, to the cent
+  // "Other" shows a fill-in for the member's own portion size
+  const sel = doc.getElementById('f_options_0_items_0_panCalc_guide');
+  sel.value = 'other';
+  sel.dispatchEvent(new win.Event('change', { bubbles:true }));
+  const oz = doc.getElementById('f_options_0_items_0_panCalc_servingOz');
+  assert.ok(oz, 'Other portion-size field shown');
+  oz.value = '7.5';
+  oz.dispatchEvent(new win.Event('input', { bubbles:true }));
+  assert.equal(it().panCalc.servingOz, 7.5);
+  assert.match(doc.getElementById('pcServ_' + it().id).textContent, /Portion: 7\.5 oz/);
+  // no weigh-the-pan fields anywhere
+  assert.equal(doc.querySelector('[data-bind$=".emptyOz"], [data-bind$=".fullOz"]'), null);
 });
 
 test('JSON save → load round trip, and old/partial files still load', () => {
