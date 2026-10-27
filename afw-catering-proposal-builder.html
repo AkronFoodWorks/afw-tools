@@ -349,7 +349,7 @@
       <span class="brand-sub">a program of The Well CDC</span>
     </div>
     <p class="eyebrow">Catering Proposal Builder</p>
-    <h1>Write a proposal the client can say <em>yes</em> to</h1>
+    <h1>Write a proposal a client can say <em>yes</em> to</h1>
     <p class="lede">Got a catering referral? Fill in your menu, prices, and terms, step by step. You'll get a clean, plain-text proposal to paste into an email to Erica or Regina.</p>
   </header>
 
@@ -535,6 +535,7 @@
       },
       tax:{ mode:'none', type:'rate', rate:null, amount:null, includeExtras:true },
       wording:{ service:'', setup:'', payment:'' },
+      reheating:'',
       sentToAfw:false
     };
   }
@@ -768,9 +769,11 @@
     const lines = [
       `Service style: ${String(st.wording.service || '').trim() || autoServiceLine(st) || '[pickup, delivery, or on-site, and any extra charge]'}`,
       `Notice needed: ${notice !== null ? daysText(notice) : '[how much]'}`,
-      `Setup and supplies: ${String(st.wording.setup || '').trim() || autoSetupLine(st) || '[included or extra]'}`,
-      `Payment terms: ${String(st.wording.payment || '').trim() || autoPaymentLine(st) || '[deposit, when due, refundable or non-refundable]'}`
+      `Setup and supplies: ${String(st.wording.setup || '').trim() || autoSetupLine(st) || '[included or extra]'}`
     ];
+    // optional, from the lesson's "Add what the client needs to plan" slide
+    if (String(st.reheating || '').trim()) lines.push(`Reheating and holding: ${String(st.reheating).trim()}`);
+    lines.push(`Payment terms: ${String(st.wording.payment || '').trim() || autoPaymentLine(st) || '[deposit, when due, refundable or non-refundable]'}`);
     if (num(t.finalCountDays) !== null) lines.push(`Final guest count: due ${daysText(num(t.finalCountDays))} before the event`);
     if (num(t.cancelDays) !== null){
       const n = num(t.cancelDays);
@@ -1209,6 +1212,11 @@
         ${S.extras.map((x, i) => extraRow(x, i)).join('')}
         <button type="button" class="btn btn-dashed" data-act="addExtra">+ Add your own</button>
         ${wordingBox('setup', 'Setup and supplies')}
+        <div class="term" style="margin-top:18px">
+          <h3>Reheating and holding</h3>
+          <p class="think">Optional. A line on how to hold or reheat the food so it’s at its best when it’s served. <i>Example: Arrives hot — keep covered until serving.</i></p>
+          ${inputField({ path:'reheating', label:'Reheating and holding (optional)', placeholder:'Leave blank to leave this line out' })}
+        </div>
       </div>`;
   }
   function extraRow(x, i){

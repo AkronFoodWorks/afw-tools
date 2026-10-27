@@ -325,3 +325,18 @@ test('Special-meal check needs one dish that covers the request', () => {
   st.options[0].items.forEach(it => { it.tags = []; });
   assert.equal(win.CPB.dietaryCheck(st)[0].ok, false);
 });
+
+test('Reheating and holding line is optional and sits after Setup and supplies', () => {
+  const win = load();
+  const st = classicOnly(sampleIn(win));
+  assert.ok(!win.CPB.buildText(st).includes('Reheating'));
+  st.reheating = 'Arrives hot — keep covered until serving';
+  assert.ok(win.CPB.buildText(st).includes(
+    'Setup and supplies: Serving utensils included\nReheating and holding: Arrives hot — keep covered until serving\nPayment terms:'));
+  // files saved before this field existed still load with it blank
+  const old = JSON.parse(JSON.stringify(win.CPB.collectState()));
+  delete old.reheating;
+  const win2 = load();
+  win2.CPB.applyState(old);
+  assert.equal(win2.CPB.state.reheating, '');
+});
