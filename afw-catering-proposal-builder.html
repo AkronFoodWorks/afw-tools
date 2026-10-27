@@ -62,21 +62,22 @@
       2026-10, the program had no prior definition).
       "N days before the event" always means calendar days.
 
-  · PAN PRICING PANEL ("Help me price this pan"): a straight
-    port of the Pan Pricing Calculator tab in
+  · PAN PRICING PANEL ("Help me price this pan"): the cost and
+    price columns of the Pan Pricing Calculator tab in
     afw-pan-pricing-toolkit.xlsx, same blank-cell rules:
-        food wt      = full − empty
-        servings     = food wt ÷ serving oz        (NOT rounded)
         total cost   = ingredients + labor + packaging
         cost/serving = total cost ÷ servings
         price/serv.  = cost/serving ÷ (1 − margin)  (blank if margin ≥ 100%)
         price/pan    = price/serving × servings
-      Serving-size presets are the Serving Size Guide tab's
-      ranges, verbatim. The ONE step the workbook doesn't have:
-      "Use these numbers" puts serves = servings ROUNDED DOWN to
-      whole plates (a proposal can't say "serves 34.29") and
-      price per pan rounded to the cent. If the workbook changes,
-      update panCalc() and SERVING_GUIDE together.
+    The workbook's weigh-the-pan step (servings = (full − empty) ÷
+    serving oz) was REMOVED at staff request (2026-10) as too much
+    for this tool; servings = the dish's own "serves" number. The
+    portion-size picker (Serving Size Guide ranges verbatim, plus
+    "Other" for a member's own oz) is guidance for choosing that
+    number and doesn't enter the math. "Use this price" fills price
+    per pan only, rounded to the cent. Old files may still carry
+    emptyOz/fullOz; they're kept and ignored. If the toolkit is
+    revised, update panCalc() and SERVING_GUIDE together.
 
   · DATA MODEL: no browser storage (same reasoning as the other
     tools). collectState()/applyState() feed both the JSON
@@ -115,6 +116,8 @@
     --line:#E2D9C6;
     --good-bg:#E7EFE5;
     --warn-bg:#F7EDD2;
+    --bad:#B42318;
+    --bad-bg:#FDECEA;
     --shadow:0 18px 40px -22px rgba(30,58,45,.45);
     --display:'Fraunces',Georgia,serif;
     --body:'Hanken Grotesk',system-ui,sans-serif;
@@ -310,7 +313,26 @@
   .checks li:first-child{border-top:none}
   .checks .ic{font-weight:700;font-size:1.05rem;line-height:1.4}
   .checks .ok .ic{color:var(--green)}
-  .checks .warn .ic{color:var(--amber)}
+  .checks .light .ic{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;border:2px solid var(--ink-faint);color:transparent;font-size:0;margin-top:3px}
+  .checks li.strong{background:var(--bad-bg);border-left:4px solid var(--bad);border-radius:8px;padding-left:8px;margin:4px 0}
+  .checks .strong .ic{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--bad);color:#fff;font-size:.85rem;margin-top:2px}
+  .checks .lvl{display:block;font-size:.68rem;font-weight:700;letter-spacing:.12em;text-transform:uppercase;margin-bottom:2px}
+  .checks .strong .lvl{color:var(--bad)}
+  .checks .light .lvl{color:var(--ink-faint)}
+  .check-sum{font-weight:700;font-size:.95rem;margin:-4px 0 6px}
+  .check-sum .bad{color:var(--bad)}
+  .check-sum .good{color:var(--green)}
+  .btn-fix{border-color:var(--bad);background:var(--bad);color:#fff}
+  .btn-fix:hover{background:#912018}
+  .needs-fix{outline:2.5px solid var(--bad);outline-offset:5px;border-radius:10px}
+  .needs-look{outline:2px dashed var(--gold);outline-offset:5px;border-radius:10px}
+  .fix-msg{color:var(--bad);font-weight:700;font-size:.86rem;margin-top:8px}
+  .fix-msg::before{content:"! "}
+  .fix-msg.look{color:var(--ink-soft);font-weight:600}
+  .fix-msg.look::before{content:""}
+  .opt-tabs .has-fix{box-shadow:0 0 0 2.5px var(--bad)}
+  .opt-tabs .has-fix::after{content:" !";color:var(--bad);font-weight:800}
+  .opt-tabs .has-fix[aria-pressed="true"]::after{color:#fff}
   .checks .detail{display:block;font-size:.84rem;color:var(--ink-soft)}
   .checks button{margin-top:6px}
   .send-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
@@ -342,7 +364,18 @@
   @media print{
     .no-print,.wrap > *:not(#printOut){display:none !important}
     body{padding:0;background:#fff}
-    #printOut{display:block;white-space:pre-wrap;font-family:var(--body);font-size:11.5pt;line-height:1.45;color:#000}
+    @page{margin:0.6in}
+    #printOut{display:block;font-family:var(--body);font-size:10.5pt;line-height:1.45;color:#000}
+    #printOut h1{max-width:none;font-family:var(--display);font-weight:600;font-size:20pt;line-height:1.1;padding-bottom:8pt;border-bottom:2pt solid #000;margin-bottom:12pt}
+    #printOut h2{font-family:var(--display);font-weight:600;font-size:13pt;margin:16pt 0 8pt;padding-bottom:3pt;border-bottom:.75pt solid #000;break-after:avoid}
+    #printOut .p-dish{margin:0 0 8pt;break-inside:avoid}
+    #printOut .p-dish b{font-weight:700}
+    #printOut .p-diet{margin:4pt 0 8pt;padding:6pt 8pt;border:.75pt solid #999;break-inside:avoid}
+    #printOut .p-total{margin:8pt 0 4pt;padding-top:6pt;border-top:.75pt solid #000;break-inside:avoid}
+    #printOut .p-total p{margin:0 0 2pt}
+    #printOut .p-grand{font-size:12pt}
+    #printOut .p-terms{margin-top:18pt;padding-top:8pt;border-top:2pt solid #000;break-inside:avoid}
+    #printOut .p-terms p{margin:0 0 4pt}
   }
 </style>
 </head>
@@ -512,7 +545,7 @@
 
   // ================= state =================
   function blankCharge(type){ return { type:type, amount:null, rate:null, hours:null, staff:null, minHours:null, miles:null }; }
-  function blankPanCalc(){ return { emptyOz:null, fullOz:null, servingOz:null, guide:'', ingredients:null, labor:null, packaging:null, marginPct:null }; }
+  function blankPanCalc(){ return { servingOz:null, guide:'', ingredients:null, labor:null, packaging:null, marginPct:null }; }
   function blankItem(){
     return { id:uid('i'), name:'', size:'', sizeOther:'', serves:null, pricePerPan:null,
              forWho:'all', forGuests:null, pansOverride:null,
@@ -547,29 +580,26 @@
   }
 
   let S = blankState();
-  const ui = { step:0, opt:0, open:{} };   // not saved
+  const ui = { step:0, opt:0, open:{}, showFixes:false };   // not saved
 
   // ================= the math =================
-  function panCalc(pc){
-    // Pan Pricing Calculator tab, row by row, same "" rules as the workbook.
+  function panCalc(pc, serves){
+    // Pan Pricing Calculator tab (cost + price columns), same "" rules as
+    // the workbook. G = servings per pan = the dish's "serves" number.
     pc = pc || {};
-    const C = num(pc.emptyOz), D = num(pc.fullOz), F = num(pc.servingOz);
+    const G = num(serves) > 0 ? num(serves) : null;
     const H = num(pc.ingredients), I = num(pc.labor), J = num(pc.packaging);
     const M = num(pc.marginPct) === null ? null : num(pc.marginPct) / 100;
-    const E = (C === null || D === null) ? null : D - C;
-    const G = (E === null || F === null || F === 0) ? null : E / F;
     const K = (H === null && I === null && J === null) ? null : (H || 0) + (I || 0) + (J || 0);
-    const L = (G === null || G === 0 || K === null) ? null : K / G;
+    const L = (G === null || K === null) ? null : K / G;
     const N = (L === null || M === null || M >= 1) ? null : L / (1 - M);
     const O = (N === null || G === null) ? null : N * G;
-    return { foodWt:E, servings:G, totalCost:K, costPerServing:L, pricePerServing:N, pricePerPan:O };
+    return { servings:G, totalCost:K, costPerServing:L, pricePerServing:N, pricePerPan:O };
   }
-  // What "Use these numbers" writes into the item.
+  // What "Use this price" writes into the item: the price per pan, to the cent.
   function panCalcToItem(r){
-    if (!r || r.servings === null || r.pricePerPan === null) return null;
-    const serves = Math.floor(r.servings + 1e-9);
-    if (serves < 1) return null;
-    return { serves:serves, pricePerPan:Math.round(r.pricePerPan * 100) / 100 };
+    if (!r || r.pricePerPan === null) return null;
+    return { pricePerPan:Math.round(r.pricePerPan * 100) / 100 };
   }
 
   function isBlankItem(it){
@@ -825,6 +855,37 @@
     return lines.join('\n');
   }
 
+  // Print / save-as-PDF: the same words as the plain text, laid out with
+  // light black-and-white styling. Built line by line from buildText().
+  function printHtml(st){
+    const lines = buildText(st).split('\n');
+    const heads = new Set(outputOptions(st).map(o => optionHeader(st, o, st.options.indexOf(o))));
+    const lab = l => { const k = l.indexOf(': '); return k < 0 ? esc(l) : `<b>${esc(l.slice(0, k + 1))}</b> ${esc(l.slice(k + 2))}`; };
+    const out = [`<h1>${esc(lines[0])}</h1>`];
+    let i = 1, inTerms = false;
+    while (i < lines.length){
+      const l = lines[i];
+      if (l === ''){ i++; continue; }
+      if (heads.has(l)){ out.push(`<h2>${esc(l)}</h2>`); i++; continue; }
+      if (!inTerms && / — serves /.test(l)){
+        out.push(`<div class="p-dish"><b>${esc(l)}</b><br>${esc(lines[i + 1] || '')}</div>`); i += 2; continue;
+      }
+      if (l === 'Dietary options:'){
+        const d = []; i++;
+        while (i < lines.length && lines[i] !== '') d.push(lab(lines[i++]));
+        out.push(`<div class="p-diet"><b>Dietary options</b><br>${d.join('<br>')}</div>`); continue;
+      }
+      if (!inTerms && /^Service style: /.test(l)){ inTerms = true; out.push('<div class="p-terms">'); }
+      if (inTerms){ out.push(`<p>${lab(l)}</p>`); i++; continue; }
+      // the total block: subtotal / extras / tax lines, then Total
+      const t = [];
+      while (i < lines.length && lines[i] !== '') t.push(lines[i++]);
+      out.push(`<div class="p-total">${t.map(x => /^Total: /.test(x) ? `<p class="p-grand">${lab(x)}</p>` : `<p>${lab(x)}</p>`).join('')}</div>`);
+    }
+    if (inTerms) out.push('</div>');
+    return out.join('');
+  }
+
   // ================= dates + deposit =================
   function depositOption(st){
     return st.options.find(o => o.id === st.terms.depositOptionId) || outputOptions(st)[0];
@@ -877,69 +938,136 @@
     return out;
   }
 
+  // Each check has a level: 'ok', 'light' (worth a look: reminders and
+  // optional things) or 'strong' (needs fixing: a [blank] in the proposal,
+  // missing price/serves, too few pans, allergens unset, undeclared tags,
+  // or a contradiction like charging delivery on a pickup). Every issue
+  // names the field it's about (sel) so "Go to…" can outline it in red.
   function checks(st, text){
     const g = num(st.event.guests);
     const opts = outputOptions(st);
     const res = [];
-    const add = (ok, title, detail, step) => res.push({ ok, title, detail, step });
+    const iss = (level, step, sel, msg, opt) => ({ level, step, sel, msg, opt });
+    const add = (title, issues, okDetail, failDetail, step, forced) => {
+      const level = forced || (issues.some(i => i.level === 'strong') ? 'strong' : issues.length ? 'light' : 'ok');
+      res.push({ title, level, ok: level === 'ok', detail: level === 'ok' ? okDetail : failDetail, issues,
+                 step: issues.length ? issues[0].step : step });
+    };
+    const ip = (o, it) => `options.${st.options.indexOf(o)}.items.${o.items.indexOf(it)}`;
+    const oi = o => st.options.indexOf(o);
 
-    add(!!st.event.eligibilityConfirmed, 'Eligible: AFW kitchen, policies, good standing, nothing past due',
-        st.event.eligibilityConfirmed ? 'You confirmed this in Step 1.' : 'Tick “I’m all set” on the reminder card in Step 1.', 0);
+    // 1 — a reminder the member confirms; never more than "worth a look"
+    add('Eligible: AFW kitchen, policies, good standing, nothing past due',
+        st.event.eligibilityConfirmed ? [] : [iss('light', 0, '[data-path="event.eligibilityConfirmed"]', 'Tick “I’m all set” if all four are true.')],
+        'You confirmed this in Step 1.', 'Tick “I’m all set” on the reminder card in Step 1.', 0);
 
-    const missing = [];
+    // 2
+    const missing = [], i2 = [];
     opts.forEach(o => {
       const its = optionItems(o);
-      if (!its.length) missing.push(`${optionLabel(o)} has no dishes yet`);
+      if (st.options.length > 1 && !String(o.name || '').trim())
+        i2.push(iss('strong', 1, `[data-bind="options.${oi(o)}.name"]`, 'Give this package a short name.', oi(o)));
+      if (!its.length){
+        missing.push(`${optionLabel(o)} has no dishes yet`);
+        i2.push(iss('strong', 1, '[data-act="addItem"]', 'Add at least one dish.', oi(o)));
+      }
       its.forEach(it => {
-        const need = [];
-        if (!String(it.name || '').trim()) need.push('name');
-        if (!sizeText(it)) need.push('size');
-        if (!(num(it.serves) > 0)) need.push('serves');
-        if (cents(it.pricePerPan) === null) need.push('price');
+        const need = [], p = ip(o, it);
+        if (!String(it.name || '').trim()){ need.push('name'); i2.push(iss('strong', 1, `[data-bind="${p}.name"]`, 'Add the dish name.', oi(o))); }
+        if (!sizeText(it)){
+          need.push('size');
+          i2.push(it.size === 'other'
+            ? iss('strong', 1, `[data-bind="${p}.sizeOther"]`, 'Type the size.', oi(o))
+            : iss('strong', 1, `[data-path="${p}.size"]`, 'Pick a size.', oi(o)));
+        }
+        if (!(num(it.serves) > 0)){ need.push('serves'); i2.push(iss('strong', 1, `[data-bind="${p}.serves"]`, 'How many people does it serve?', oi(o))); }
+        if (cents(it.pricePerPan) === null){ need.push('price'); i2.push(iss('strong', 1, `[data-bind="${p}.pricePerPan"]`, 'Add a price.', oi(o))); }
         if (need.length) missing.push(`${itemLabel(it)}: add ${joinList(need)}`);
       });
     });
-    add(!missing.length, 'Every line has item, size, serves, and price', missing.join(' · ') || 'All set.', 1);
+    add('Every line has item, size, serves, and price', i2, 'All set.', missing.join(' · ') || 'Name each package.', 1);
 
-    const qty = [];
-    if (!(g > 0)) qty.push('Add the guest count in Step 1');
+    // 3
+    const qty = [], i3 = [];
+    if (!(g > 0)){ qty.push('Add the guest count in Step 1'); i3.push(iss('strong', 0, '[data-bind="event.guests"]', 'Add the guest count.')); }
     opts.forEach(o => optionItems(o).forEach(it => {
-      const c = itemCalc(it, g);
-      if (c.short) qty.push(`${itemLabel(it)}: ${c.pans} ${countWord(it, c.pans)} serve ${numText(c.coverage)}, short of ${numText(c.forN)}`);
-      if (it.forWho === 'some' && !(num(it.forGuests) > 0)) qty.push(`${itemLabel(it)}: how many guests is it for?`);
+      const c = itemCalc(it, g), p = ip(o, it);
+      if (c.short){
+        qty.push(`${itemLabel(it)}: ${c.pans} ${countWord(it, c.pans)} serve ${numText(c.coverage)}, short of ${numText(c.forN)}`);
+        i3.push(iss('strong', 1, `[data-bind="${p}.pansOverride"]`, `${c.pans} ${countWord(it, c.pans)} serve ${numText(c.coverage)} — that’s short of ${numText(c.forN)}.`, oi(o)));
+      }
+      if (it.forWho === 'some' && !(num(it.forGuests) > 0)){
+        qty.push(`${itemLabel(it)}: how many guests is it for?`);
+        i3.push(iss('strong', 1, `[data-bind="${p}.forGuests"]`, 'How many guests is it for?', oi(o)));
+      }
     }));
-    add(!qty.length, 'Quantities are rounded up and totals add up', qty.join(' · ') || 'Pans are rounded up and every total is added for you.', 1);
+    add('Quantities are rounded up and totals add up', i3, 'Pans are rounded up and every total is added for you.', qty.join(' · '), 1);
 
+    // 4 — follows from 2 and 3; no field of its own
     const pgOk = g > 0 && opts.every(o => optionCalc(st, o).allComplete);
-    add(pgOk, 'A per-person price is shown', pgOk ? 'Shown on every package’s Total line.' : 'Needs the guest count and every price filled in.', 1);
+    add('A per-person price is shown', [], 'Shown on every package’s Total line.',
+        'Shows once the guest count and every price are filled in — fix the items above.', 1, pgOk ? 'ok' : 'strong');
 
-    const al = [], unconf = [];
+    // 5
+    const al = [], unconf = [], i5 = [];
     opts.forEach(o => optionItems(o).forEach(it => {
-      if (!(it.allergens && it.allergens.length) && !it.allergenNone) al.push(itemLabel(it));
-      if ((it.tags || []).length && !it.tagsConfirmed && !unconf.includes(itemLabel(it))) unconf.push(itemLabel(it));
+      const p = ip(o, it);
+      if (!(it.allergens && it.allergens.length) && !it.allergenNone){
+        al.push(itemLabel(it));
+        i5.push(iss('strong', 1, `[data-act="allergen"][data-path="${p}"]`, 'Pick its allergens, or tick “None” if you’re sure.', oi(o)));
+      }
+      if ((it.tags || []).length && !it.tagsConfirmed){
+        if (!unconf.includes(itemLabel(it))) unconf.push(itemLabel(it));
+        i5.push(iss('strong', 1, `[data-path="${p}.tagsConfirmed"]`, 'Declare these tags — confirm you’ve checked them.', oi(o)));
+      }
     }));
+    const diet = dietaryCheck(st).filter(x => !x.ok && opts.includes(x.option));
+    diet.forEach(x => i5.push(iss('light', 1, '#dietBox', `${x.label}: ${x.want} requested — check a full meal covers it.`, oi(x.option))));
     const tagMsg = [];
     if (al.length) tagMsg.push(`Allergens not set: ${al.join(', ')}`);
     if (unconf.length) tagMsg.push(`Diet tags not yet declared: ${unconf.join(', ')} — confirm you’ve checked them in Step 2`);
-    add(!tagMsg.length, 'Dietary tags and allergens are on every item',
-        tagMsg.join(' · ') || 'Every dish lists its allergens and every diet tag is declared. Double-check the tags — the tool can’t tell a dish with no tags from one you forgot.', 1);
+    if (diet.length) tagMsg.push(`Special meals to double-check: ${[...new Set(diet.map(x => x.label))].join(', ')}`);
+    add('Dietary tags and allergens are on every item', i5,
+        'Every dish lists its allergens and every diet tag is declared. Double-check the tags — the tool can’t tell a dish with no tags from one you forgot.',
+        tagMsg.join(' · '), 1);
 
-    const tm = [];
-    if (!st.event.serviceStyle && !String(st.wording.service || '').trim()) tm.push('service style (Step 1)');
-    if (num(st.terms.noticeDays) === null) tm.push('notice needed (Step 4)');
-    if (!String(st.wording.payment || '').trim() && !autoPaymentLine(st)) tm.push('payment terms (Step 4)');
-    if (!String(st.wording.setup || '').trim() && !autoSetupLine(st)) tm.push('setup and supplies (Step 3)');
-    if (num(st.terms.pricesGoodDays) === null) tm.push('prices good for (Step 4)');
+    // 6
+    const tm = [], i6 = [];
     const del = st.extras.find(x => x.id === 'delivery');
-    if (st.event.serviceStyle === 'pickup' && del && del.status === 'extra') tm.push('you charge for delivery but picked Pickup');
-    add(!tm.length, 'Service style, notice, and payment terms are included', tm.length ? 'Still needed: ' + tm.join(', ') : 'All set.', 3);
+    if (st.event.serviceStyle === 'pickup' && del && del.status === 'extra'){
+      tm.push('you charge for delivery but picked Pickup');
+      i6.push(iss('strong', 0, '[data-path="event.serviceStyle"]', 'You picked Pickup, but you charge for delivery. Which is it?'));
+      i6.push(iss('strong', 2, `[data-path="extras.${st.extras.indexOf(del)}.status"]`, 'Delivery is set as a charge, but the event is Pickup.'));
+    }
+    if (!st.event.serviceStyle && !String(st.wording.service || '').trim()){
+      tm.push('service style (Step 1)'); i6.push(iss('strong', 0, '[data-path="event.serviceStyle"]', 'Pick how the food gets there.'));
+    }
+    if (!String(st.wording.setup || '').trim() && !autoSetupLine(st)){
+      tm.push('setup and supplies (Step 3)'); i6.push(iss('strong', 2, '#auto_setup', 'Set at least one row to Included or Extra charge, or write this line yourself.'));
+    }
+    if (!String(st.wording.payment || '').trim() && !autoPaymentLine(st)){
+      tm.push('payment terms (Step 4)'); i6.push(iss('strong', 3, '[data-path="terms.deposit.type"]', 'Choose your deposit (or “No deposit”).'));
+    }
+    if (num(st.terms.pricesGoodDays) === null){
+      tm.push('prices good for (Step 4)'); i6.push(iss('strong', 3, '[data-bind="terms.pricesGoodDays"]', 'How many days are these prices good for?'));
+    }
+    if (num(st.terms.noticeDays) === null){
+      tm.push('notice needed (Step 4)'); i6.push(iss('strong', 3, '[data-bind="terms.noticeDays"]', 'How many days’ notice do you need?'));
+    }
+    add('Service style, notice, and payment terms are included', i6, 'All set.', 'Still needed: ' + tm.join(', '), 3);
 
+    // 7 — any [blank] left is a must-fix; most are flagged by the checks above
     const blanks = (text.match(/\[[^\]]*\]/g) || []);
-    add(!blanks.length, 'Plain text, ready to paste',
-        blanks.length ? `The tool always writes plain text — but ${blanks.length} [blank${blanks.length === 1 ? '' : 's'}] still need filling in.` : 'No tables or pictures — it will paste cleanly into any email.', 4);
+    const i7 = [];
+    if (!String(st.event.businessName || '').trim()) i7.push(iss('strong', 0, '[data-bind="event.businessName"]', 'Add your business name.'));
+    add('Plain text, ready to paste', i7, 'No tables or pictures — it will paste cleanly into any email.',
+        `The tool always writes plain text — but ${blanks.length} [blank${blanks.length === 1 ? '' : 's'}] still need filling in.`, 1,
+        blanks.length ? 'strong' : 'ok');
 
-    add(!!st.sentToAfw, 'Sent to Erica or Regina before the deadline',
-        st.sentToAfw ? 'Marked as sent.' : 'Send it, then tick “I sent it” below. Watch the deadline in the referral email.', 4);
+    // 8 — a reminder
+    add('Sent to Erica or Regina before the deadline',
+        st.sentToAfw ? [] : [iss('light', 4, '[data-path="sentToAfw"]', 'Tick this once you’ve sent it.')],
+        'Marked as sent.', 'Send it, then tick “I sent it” below. Watch the deadline in the referral email.', 4);
     return res;
   }
   function optionLabel(o){ return (String(o.name || '').trim() || 'This package'); }
@@ -1194,35 +1322,33 @@
   function panPanel(oi, ii, it){
     const p = `options.${oi}.items.${ii}.panCalc`;
     const pc = it.panCalc;
-    const g = SERVING_GUIDE[num(pc.guide)];
+    const other = pc.guide === 'other';
+    const g = other ? null : SERVING_GUIDE[num(pc.guide)];
     const k = 'pan_' + it.id;
+    const unit = countWord(it, 1);
+    const selId = `f_${p.replace(/\./g,'_')}_guide`;
     return `<details class="panel" data-open-key="${k}"${ui.open[k] ? ' open' : ''}>
-      <summary>Help me price this ${countWord(it, 1)}</summary>
+      <summary>Help me price this ${unit}</summary>
       <div class="panel-body">
-        <p class="sub">From the Pan Pricing Toolkit: weigh the pan, pick a serving size, add your costs and margin. A $15 kitchen scale is all you need.</p>
-        <p class="pc-step">1 · Weigh the pan</p>
-        <div class="grid2">
-          ${inputField({ path:p + '.emptyOz', label:'Empty pan (oz)', type:'num' })}
-          ${inputField({ path:p + '.fullOz', label:'Full pan (oz)', type:'num', hint:'Packed the way you’d sell it. 1 lb = 16 oz.' })}
-        </div>
-        <p class="pc-out" id="pcFood_${it.id}"></p>
-        <p class="pc-step">2 · Pick a serving size</p>
-        <div class="field"><label for="f_${p.replace(/\./g,'_')}_guide">Serving size guide</label>
-          <select id="f_${p.replace(/\./g,'_')}_guide" data-bind="${p}.guide" data-type="text" data-rerender="1">
+        <p class="sub">From the Pan Pricing Toolkit: pick a portion size, then add your costs and the margin you want.</p>
+        <p class="pc-step">1 · Portion size</p>
+        <div class="field"><label for="${selId}">What kind of dish is it?</label>
+          <select id="${selId}" data-bind="${p}.guide" data-type="text" data-rerender="1">
             <option value="">Choose a dish type…</option>
             ${SERVING_GUIDE.map((s, i) => `<option value="${i}"${String(pc.guide) === String(i) ? ' selected' : ''}>${esc(s.type)} (${s.lo} – ${s.hi} oz)</option>`).join('')}
+            <option value="other"${other ? ' selected' : ''}>Other — I’ll enter my own</option>
           </select>
-          ${g ? `<p class="guide-note">Typical: ${g.lo} – ${g.hi} oz. ${esc(g.note)} Tap one:</p>
-            <div class="seg" style="margin-top:6px">${range(g.lo, g.hi).map(n => `<button type="button" data-act="set" data-path="${p}.servingOz" data-val="${n}" data-type="num" ${pressed(num(pc.servingOz) === n)}>${n} oz</button>`).join('')}</div>` : ''}
-          <span class="hint">Plated main? Use the bigger number. Buffet with lots of choices? The smaller one.</span>
+          ${g ? `<p class="guide-note">Typical: ${g.lo} – ${g.hi} oz a portion. ${esc(g.note)} Tap one:</p>
+            <div class="seg" style="margin-top:6px">${range(g.lo, g.hi).map(n => `<button type="button" data-act="set" data-path="${p}.servingOz" data-val="${n}" data-type="num" ${pressed(num(pc.servingOz) === n)}>${n} oz</button>`).join('')}</div>
+            <span class="hint">Plated main? Use the bigger number. Buffet with lots of choices? The smaller one.</span>` : ''}
         </div>
-        ${inputField({ path:p + '.servingOz', label:'Serving size (oz)', type:'num' })}
+        ${other ? inputField({ path:p + '.servingOz', label:'Your portion size (oz)', type:'num', placeholder:'e.g., 6', hint:'1 cup of cooked rice is about 6–7 oz.' }) : ''}
         <p class="pc-out" id="pcServ_${it.id}"></p>
-        <p class="pc-step">3 · Your costs for one pan</p>
+        <p class="pc-step">2 · Your costs for one ${unit}</p>
         <div class="grid2">
-          ${inputField({ path:p + '.ingredients', label:'Ingredients for this pan', type:'num', pre:'$' })}
-          ${inputField({ path:p + '.labor', label:'Labor for this pan', type:'num', pre:'$', hint:'What you pay yourself or a helper to make it.' })}
-          ${inputField({ path:p + '.packaging', label:'Packaging for this pan', type:'num', pre:'$', hint:'Foil pan, lid, label.' })}
+          ${inputField({ path:p + '.ingredients', label:`Ingredients for this ${unit}`, type:'num', pre:'$' })}
+          ${inputField({ path:p + '.labor', label:`Labor for this ${unit}`, type:'num', pre:'$', hint:'What you pay yourself or a helper to make it.' })}
+          ${inputField({ path:p + '.packaging', label:`Packaging for this ${unit}`, type:'num', pre:'$', hint:'Foil pan, lid, label.' })}
           ${inputField({ path:p + '.marginPct', label:'Margin you want', type:'num', post:'%', hint:'The share of the price you keep after costs. At 40%, a $100 pan leaves you $40.' })}
         </div>
         <p class="pc-out" id="pcCost_${it.id}"></p>
@@ -1389,7 +1515,8 @@
       </div>
       <div class="card">
         <h2>Before you send: the 8-point check</h2>
-        <p class="sub">These are reminders, not roadblocks — you can send at any time.</p>
+        <p class="sub">Nothing here stops you sending. Red items would leave a gap or a mistake in your proposal; the rest are reminders.</p>
+        <p class="check-sum" id="checkSum" aria-live="polite"></p>
         <ul class="checks" id="checks"></ul>
       </div>
       <div class="card">
@@ -1440,21 +1567,25 @@
         strip.classList.toggle('warn', c.short);
       }
       // pan pricing panel
-      const r = panCalc(it.panCalc);
-      const f2 = n => n === null ? '—' : (Math.round(n * 100) / 100).toLocaleString('en-US', { maximumFractionDigits:2 });
+      const r = panCalc(it.panCalc, it.serves);
       const $2 = n => n === null ? '—' : '$' + (Math.round(n * 100) / 100).toFixed(2);
-      setHTML('pcFood_' + it.id, `Food weight: <b>${r.foodWt !== null ? f2(r.foodWt) + ' oz' : '—'}</b>` +
-        (r.foodWt !== null && r.foodWt <= 0 ? ' <span class="warn-text">— the full pan should weigh more than the empty one.</span>' : ''));
-      setHTML('pcServ_' + it.id, `Servings per pan: <b>${f2(r.servings)}</b>`);
+      const unit1 = countWord(it, 1);
+      const oz = num(it.panCalc.servingOz);
+      setHTML('pcServ_' + it.id, oz !== null
+        ? `Portion: <b>${numText(oz)} oz</b>. Use it to decide how many people one ${unit1} serves` +
+          (r.servings !== null ? ` — you said <b>${numText(r.servings)}</b>.` : ' — fill that in above.')
+        : '');
       setHTML('pcCost_' + it.id, `Total cost <b>${$2(r.totalCost)}</b> · Cost per serving <b>${$2(r.costPerServing)}</b><br>
-        Price per serving <b>${$2(r.pricePerServing)}</b> · Price per pan <b>${$2(r.pricePerPan)}</b>` +
+        Price per serving <b>${$2(r.pricePerServing)}</b> · Price per ${unit1} <b>${$2(r.pricePerPan)}</b>` +
         (num(it.panCalc.marginPct) !== null && num(it.panCalc.marginPct) >= 100 ? '<br><span class="warn-text">Margin has to be under 100%.</span>' : ''));
       const use = panCalcToItem(r);
       setHTML('pcUse_' + it.id, use
-        ? `For your proposal: <b>serves ${use.serves}</b> · <b>${money2(Math.round(use.pricePerPan * 100))} per pan</b><br>
-           <span class="hint">Servings are rounded down to whole plates. You can round the price after.</span>
-           <button type="button" class="btn btn-primary" style="margin-top:10px" data-act="usePan" data-val="${it.id}">Use these numbers</button>`
-        : 'Fill in the weights, serving size, costs, and margin to get a price per pan.');
+        ? `Suggested price: <b>${money2(Math.round(use.pricePerPan * 100))} per ${unit1}</b><br>
+           <span class="hint">You can round it after.</span>
+           <button type="button" class="btn btn-primary" style="margin-top:10px" data-act="usePan" data-val="${it.id}">Use this price</button>`
+        : r.servings === null
+          ? `First fill in how many people one ${unit1} serves (above).`
+          : 'Add your costs and margin to get a suggested price.');
     });
 
     // option total, budget, dietary
@@ -1512,11 +1643,18 @@
     // review
     const text = buildText(S);
     setText('preview', text);
-    setText('printOut', text);
+    setHTML('printOut', printHtml(S));
     const ck = checks(S, text);
-    setHTML('checks', ck.map(c => `<li class="${c.ok ? 'ok' : 'warn'}"><span class="ic" aria-hidden="true">${c.ok ? '✓' : '⚠'}</span>
-      <span><b>${esc(c.title)}</b><span class="sr-only">${c.ok ? ' — done' : ' — needs attention'}</span><span class="detail">${esc(c.detail)}</span>
-      ${!c.ok && c.step !== 4 ? `<button type="button" class="btn btn-quiet" data-act="step" data-val="${c.step}">Go to ${STEPS[c.step]}</button>` : ''}</span></li>`).join(''));
+    const nFix = ck.filter(c => c.level === 'strong').length, nLook = ck.filter(c => c.level === 'light').length;
+    setHTML('checkSum', !nFix && !nLook ? '<span class="good">✓ All 8 checks pass.</span>'
+      : [nFix ? `<span class="bad">${nFix} ${plural(nFix, 'thing needs', 'things need')} fixing</span>` : '',
+         nLook ? `<span>${nLook} worth a look</span>` : ''].filter(Boolean).join(' · '));
+    const ICON = { ok:'✓', light:'•', strong:'!' };
+    const TAG = { ok:' — done', light:' — worth a look', strong:' — needs fixing' };
+    setHTML('checks', ck.map((c, k) => `<li class="${c.level}"><span class="ic" aria-hidden="true">${ICON[c.level]}</span>
+      <span>${c.level === 'strong' ? '<span class="lvl">Needs fixing</span>' : c.level === 'light' ? '<span class="lvl">Worth a look</span>' : ''}<b>${esc(c.title)}</b><span class="sr-only">${TAG[c.level]}</span><span class="detail">${esc(c.detail)}</span>
+      ${!c.ok && (c.step !== 4 || c.issues.length) ? `<button type="button" class="btn ${c.level === 'strong' ? 'btn-fix' : 'btn-quiet'}" data-act="goFix" data-val="${k}">${c.step === 4 ? 'Show me' : 'Go to ' + STEPS[c.step]}</button>` : ''}</span></li>`).join(''));
+    applyFixes(ck);
     const subj = `Catering proposal — ${String(S.event.businessName || '').trim() || 'AFW member'}`;
     AFW_CONTACTS.forEach(c => {
       const a = $('mail_' + c.name);
@@ -1563,6 +1701,52 @@
     renderAll();
     if (sel){ const n = document.querySelector(sel); if (n) n.focus({ preventScroll:true }); }
   }
+  // Red call-outs: once a member presses "Go to…" in the checks, every
+  // field with a must-fix issue gets a red outline and a short note (soft
+  // outline for "worth a look"). Re-run on every refresh, so each call-out
+  // disappears the moment its field is fixed.
+  function applyFixes(ck){
+    document.querySelectorAll('.needs-fix, .needs-look').forEach(n => n.classList.remove('needs-fix', 'needs-look'));
+    document.querySelectorAll('.fix-msg').forEach(n => n.remove());
+    document.querySelectorAll('.opt-tabs .has-fix').forEach(n => n.classList.remove('has-fix'));
+    if (!ui.showFixes) return;
+    const seen = new Set();
+    ck.forEach(c => c.issues.forEach(is => {
+      if (!is.sel) return;
+      if (is.opt !== undefined && is.opt !== ui.opt){
+        if (is.level === 'strong'){ const tab = document.querySelector(`.opt-tabs [data-val="${is.opt}"]`); if (tab) tab.classList.add('has-fix'); }
+        return;
+      }
+      const el = document.querySelector(is.sel);
+      if (!el) return;
+      const box = el.closest('.field, .wording, .extra, .seg, .soft, #dietBox') || el;
+      const key = is.sel + '|' + is.msg;
+      if (seen.has(key)) return;
+      seen.add(key);
+      box.classList.add(is.level === 'strong' ? 'needs-fix' : 'needs-look');
+      if (box.classList.contains('needs-fix')) box.classList.remove('needs-look');
+      const m = document.createElement('p');
+      m.className = 'fix-msg' + (is.level === 'strong' ? '' : ' look');
+      m.textContent = is.msg;
+      box.appendChild(m);
+    }));
+  }
+  function goFix(k){
+    const c = checks(S, buildText(S))[k];
+    if (!c) return;
+    ui.showFixes = true;
+    const first = c.issues.find(i => i.level === 'strong') || c.issues[0];
+    if (first && first.opt !== undefined) ui.opt = first.opt;
+    ui.step = first ? first.step : c.step;
+    renderAll();
+    const target = document.querySelector(`#step${ui.step + 1} .needs-fix, #step${ui.step + 1} .needs-look`);
+    if (target){
+      target.scrollIntoView({ behavior:'smooth', block:'center' });
+      const f = target.querySelector('input, select, button');
+      if (f) f.focus({ preventScroll:true });
+    } else window.scrollTo({ top: $('stepnav').offsetTop - 8, behavior:'smooth' });
+  }
+
   function goStep(n){
     ui.step = Math.max(0, Math.min(STEPS.length - 1, n));
     renderNav(); refresh();
@@ -1576,6 +1760,7 @@
     const o = S.options[ui.opt];
     switch (act){
       case 'step': goStep(Number(val)); break;
+      case 'goFix': goFix(Number(val)); break;
       case 'prev': goStep(ui.step - 1); break;
       case 'next': if (ui.step === STEPS.length - 1) copyText(); else goStep(ui.step + 1); break;
       case 'set': {
@@ -1626,8 +1811,8 @@
       }
       case 'usePan': {
         const it = o.items.find(x => x.id === val);
-        const use = it && panCalcToItem(panCalc(it.panCalc));
-        if (use){ it.serves = use.serves; it.pricePerPan = use.pricePerPan; renderAll(); flash(`Filled in: serves ${use.serves}, ${money2(Math.round(use.pricePerPan * 100))} per pan.`); }
+        const use = it && panCalcToItem(panCalc(it.panCalc, it.serves));
+        if (use){ it.pricePerPan = use.pricePerPan; renderAll(); flash(`Price filled in: ${money2(Math.round(use.pricePerPan * 100))} per ${countWord(it, 1)}.`); }
         break;
       }
       case 'addExtra': S.extras.push({ id:uid('x'), label:'', preset:false, status:'', charge:blankCharge('flat') }); renderAll(); break;
@@ -1702,7 +1887,7 @@
   window.CPB = {
     get state(){ return S; },
     collectState, applyState, normalize, sampleState, blankState,
-    buildText, dietaryLines, optionCalc, itemCalc, extraCalc, panCalc, panCalcToItem, termFacts, checks, dietaryCheck,
+    buildText, printHtml, dietaryLines, optionCalc, itemCalc, extraCalc, panCalc, panCalcToItem, termFacts, checks, dietaryCheck,
     autoPaymentLine, autoSetupLine, autoServiceLine, money, money2, refresh, renderAll,
     SERVING_GUIDE, FILE_VERSION
   };

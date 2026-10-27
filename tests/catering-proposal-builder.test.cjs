@@ -111,7 +111,9 @@ test('Generated text matches the worked example exactly', () => {
   // and the on-screen preview / print copy carry the same text
   const full = win.CPB.buildText(st);
   assert.equal(win.document.getElementById('preview').textContent, full);
-  assert.equal(win.document.getElementById('printOut').textContent, full);
+  // print uses light styling, but carries every line of the same words
+  const printed = win.document.getElementById('printOut').textContent;
+  full.split('\n').filter(Boolean).forEach(l => assert.ok(printed.includes(l.replace(/^Dietary options:$/, 'Dietary options')), l));
 });
 
 test('Two options: one business line, options separated, terms once', () => {
@@ -228,31 +230,56 @@ test('Deposit and date math', () => {
   assert.equal(iso(win.CPB.termFacts(st, today).depositDue), '2026-11-18');
 });
 
-test('Pan pricing panel matches the workbook examples exactly', () => {
+test('Pan pricing panel matches the workbook cost and price columns', () => {
   const win = load();
   const pc = win.CPB.panCalc;
   const close = (a, b) => assert.ok(Math.abs(a - b) < 1e-9, `${a} vs ${b}`);
-  // Jollof Chicken & Rice row of the Pan Pricing Calculator tab
-  const j = pc({ emptyOz:90, fullOz:330, servingOz:7, ingredients:34, labor:18, packaging:6, marginPct:40 });
-  assert.equal(j.foodWt, 240);
-  close(j.servings, 34.2857142857143);
-  assert.equal(j.totalCost, 58);
-  close(j.costPerServing, 1.69166666666667);
-  close(j.pricePerServing, 2.81944444444444);
-  close(j.pricePerPan, 96.6666666666667);
-  assert.deepEqual(plain(win.CPB.panCalcToItem(j)), { serves:34, pricePerPan:96.67 });
-  // Beef Lasagna (9×13)
-  const l = pc({ emptyOz:80, fullOz:260, servingOz:9, ingredients:22, labor:15, packaging:5, marginPct:45 });
-  assert.equal(l.servings, 20);
+  // Beef Lasagna (9×13) row of the Pan Pricing Calculator tab: 20 servings
+  const l = pc({ ingredients:22, labor:15, packaging:5, marginPct:45 }, 20);
+  assert.equal(l.totalCost, 42);
   close(l.costPerServing, 2.1);
+  close(l.pricePerServing, 3.81818181818182);
   close(l.pricePerPan, 76.3636363636364);
-  // blank rules: margin ≥ 100% → blank; no costs → blank
-  assert.equal(pc({ emptyOz:80, fullOz:260, servingOz:9, ingredients:22, marginPct:100 }).pricePerServing, null);
-  assert.equal(pc({ emptyOz:80, fullOz:260, servingOz:9 }).totalCost, null);
-  assert.equal(pc({ emptyOz:80, servingOz:9 }).servings, null);
+  assert.deepEqual(plain(win.CPB.panCalcToItem(l)), { pricePerPan:76.36 });
+  // Jollof row's costs and margin, with the member's own serves number
+  const j = pc({ ingredients:34, labor:18, packaging:6, marginPct:40 }, 34);
+  close(j.costPerServing, 58 / 34);
+  close(j.pricePerPan, 58 / 0.6);                    // = cost ÷ (1 − margin) for the pan
+  assert.deepEqual(plain(win.CPB.panCalcToItem(j)), { pricePerPan:96.67 });
+  // blank rules: no serves → blank; margin ≥ 100% → blank; no costs → blank
+  assert.equal(pc({ ingredients:22, marginPct:45 }, null).pricePerPan, null);
+  assert.equal(pc({ ingredients:22, marginPct:100 }, 20).pricePerServing, null);
+  assert.equal(pc({ marginPct:45 }, 20).totalCost, null);
+  // portion size never enters the math
+  assert.equal(pc({ ingredients:22, labor:15, packaging:5, marginPct:45, servingOz:3 }, 20).pricePerPan, l.pricePerPan);
   // the Serving Size Guide ranges
   assert.equal(win.CPB.SERVING_GUIDE.length, 8);
   assert.deepEqual([win.CPB.SERVING_GUIDE[4].lo, win.CPB.SERVING_GUIDE[4].hi], [8, 10]);
+});
+
+test('Use this price fills the price only; Other portion size takes its own oz', () => {
+  const win = load();
+  sampleIn(win);
+  const doc = win.document;
+  doc.querySelector('#stepnav [data-val="1"]').click();
+  const it = () => win.CPB.state.options[0].items[0];
+  Object.assign(it().panCalc, { ingredients:22, labor:15, packaging:5, marginPct:45 });
+  win.CPB.renderAll();
+  doc.querySelector(`[data-act="usePan"][data-val="${it().id}"]`).click();
+  assert.equal(it().serves, 10);                     // unchanged
+  assert.equal(it().pricePerPan, 76.36);             // 42 ÷ 0.55, to the cent
+  // "Other" shows a fill-in for the member's own portion size
+  const sel = doc.getElementById('f_options_0_items_0_panCalc_guide');
+  sel.value = 'other';
+  sel.dispatchEvent(new win.Event('change', { bubbles:true }));
+  const oz = doc.getElementById('f_options_0_items_0_panCalc_servingOz');
+  assert.ok(oz, 'Other portion-size field shown');
+  oz.value = '7.5';
+  oz.dispatchEvent(new win.Event('input', { bubbles:true }));
+  assert.equal(it().panCalc.servingOz, 7.5);
+  assert.match(doc.getElementById('pcServ_' + it().id).textContent, /Portion: 7\.5 oz/);
+  // no weigh-the-pan fields anywhere
+  assert.equal(doc.querySelector('[data-bind$=".emptyOz"], [data-bind$=".fullOz"]'), null);
 });
 
 test('JSON save → load round trip, and old/partial files still load', () => {
@@ -377,4 +404,74 @@ test('Changing a tag in the page clears the declaration', () => {
   assert.equal(salad().tagsConfirmed, false);
   win.document.querySelector('[data-act="toggle"][data-path="options.0.items.2.tagsConfirmed"]').click();
   assert.equal(salad().tagsConfirmed, true);
+});
+
+test('Print layout: headings, bold dish lines, total and terms blocks', () => {
+  const win = load();
+  const st = sampleIn(win);
+  const html = win.CPB.printHtml(st);
+  assert.match(html, /^<h1>Towpath Catering Co\.<\/h1><h2>Classic option — 40 guests<\/h2>/);
+  assert.ok(html.includes('<div class="p-dish"><b>Beef lasagna, full pan — serves 10 — $75</b><br>3 pans = $225 · Contains: wheat, milk, eggs</div>'));
+  assert.ok(html.includes('<p class="p-grand"><b>Total:</b> $526 ($13.15 per guest)</p>'));
+  assert.ok(html.includes('<div class="p-terms"><p><b>Service style:</b> Pickup at AFW, Friday by 11:30</p>'));
+  assert.equal((html.match(/<h2>/g) || []).length, 2);
+  assert.ok(!/<table|<img/.test(html));
+});
+
+test('Checks: red for must-fix, softer for reminders', () => {
+  const win = load();
+  const st = sampleIn(win);
+  const lv = () => Object.fromEntries(win.CPB.checks(st, win.CPB.buildText(st)).map(c => [c.title.split(' ')[0].replace(':', ''), c.level]));
+  // the finished sample: only the two reminders are left
+  let l = lv();
+  assert.equal(l.Eligible, 'light');
+  assert.equal(l.Sent, 'light');
+  assert.equal(Object.values(l).filter(x => x === 'strong').length, 0);
+  // delivery charged on a pickup → must fix
+  const del = st.extras.find(x => x.id === 'delivery');
+  del.status = 'extra'; Object.assign(del.charge, { type:'flat', amount:20 });
+  assert.equal(lv().Service, 'strong');
+  del.status = '';
+  // missing pan price → must fix, and points at that price field
+  st.options[0].items[1].pricePerPan = null;
+  const c2 = win.CPB.checks(st, win.CPB.buildText(st)).find(c => c.title.startsWith('Every line'));
+  assert.equal(c2.level, 'strong');
+  assert.equal(c2.issues[0].sel, '[data-bind="options.0.items.1.pricePerPan"]');
+  // special meals not covered is only worth a look
+  st.options[0].items[1].pricePerPan = 70;
+  st.event.dietary.vegan = 50;
+  assert.equal(lv().Dietary, 'light');
+});
+
+test('Go to… outlines the field in red, and the call-out clears when fixed', () => {
+  const win = load();
+  sampleIn(win);
+  const doc = win.document;
+  win.CPB.state.options[0].items[1].pricePerPan = null;
+  win.CPB.renderAll();
+  assert.equal(doc.querySelectorAll('.needs-fix').length, 0);      // nothing red until asked
+  const k = win.CPB.checks(win.CPB.state, win.CPB.buildText(win.CPB.state)).findIndex(c => c.title.startsWith('Every line'));
+  doc.querySelector(`[data-act="goFix"][data-val="${k}"]`).click();
+  const price = doc.querySelector('[data-bind="options.0.items.1.pricePerPan"]');
+  const box = price.closest('.field');
+  assert.ok(box.classList.contains('needs-fix'));
+  assert.match(box.querySelector('.fix-msg').textContent, /Add a price/);
+  assert.equal(doc.getElementById('step2').hidden, false);
+  price.value = '70';
+  price.dispatchEvent(new win.Event('input', { bubbles:true }));
+  assert.ok(!box.classList.contains('needs-fix'));
+  assert.equal(box.querySelector('.fix-msg'), null);
+});
+
+test('A problem in another package marks its tab', () => {
+  const win = load();
+  sampleIn(win);
+  const doc = win.document;
+  win.CPB.state.options[1].items[4].pricePerPan = null;           // Plus brownies
+  win.CPB.renderAll();
+  const k = win.CPB.checks(win.CPB.state, win.CPB.buildText(win.CPB.state)).findIndex(c => c.title.startsWith('Every line'));
+  doc.querySelector(`[data-act="goFix"][data-val="${k}"]`).click();
+  assert.ok(doc.querySelector('[data-bind="options.1.items.4.pricePerPan"]').closest('.field').classList.contains('needs-fix'));
+  doc.querySelector('.opt-tabs [data-val="0"]').click();          // switch to Classic
+  assert.ok(doc.querySelector('.opt-tabs [data-val="1"]').classList.contains('has-fix'));
 });
