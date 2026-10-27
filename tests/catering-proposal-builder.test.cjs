@@ -475,3 +475,44 @@ test('A problem in another package marks its tab', () => {
   doc.querySelector('.opt-tabs [data-val="0"]').click();          // switch to Classic
   assert.ok(doc.querySelector('.opt-tabs [data-val="1"]').classList.contains('has-fix'));
 });
+
+test('Event title is required and leads the email subject', () => {
+  const win = load();
+  const st = sampleIn(win);
+  assert.equal(win.CPB.subjectLine(st), 'Office lunch for 40 — catering proposal from Towpath Catering Co.');
+  const doc = win.document;
+  assert.match(decodeURIComponent(doc.getElementById('mail_Erica').href), /subject=Office lunch for 40 — catering proposal from Towpath Catering Co\./);
+  assert.equal(doc.getElementById('subjectOut').textContent, 'Office lunch for 40 — catering proposal from Towpath Catering Co.');
+  // the proposal text itself doesn't change
+  assert.ok(!win.CPB.buildText(st).includes('Office lunch'));
+  // missing → a must-fix on the "Sent to" check, pointing at the field
+  st.event.eventTitle = '';
+  const c8 = win.CPB.checks(st, win.CPB.buildText(st)).find(c => c.title.startsWith('Sent to'));
+  assert.equal(c8.level, 'strong');
+  assert.equal(c8.issues[0].sel, '[data-bind="event.eventTitle"]');
+  assert.equal(win.CPB.subjectLine(st), '[Event title] — catering proposal from Towpath Catering Co.');
+});
+
+test('Packages: no name needed; auto-numbered when there are several', () => {
+  const win = load();
+  const st = win.CPB.blankState();
+  Object.assign(st.event, { businessName:'Test Co.', guests:20 });
+  Object.assign(st.options[0].items[0], { name:'Rice', size:'half', serves:10, pricePerPan:30 });
+  assert.ok(win.CPB.buildText(st).startsWith('Test Co.\nMenu — 20 guests\n'));
+  // one package: no name box on screen
+  win.CPB.applyState(st);
+  win.document.querySelector('#stepnav [data-val="1"]').click();
+  assert.equal(win.document.querySelector('[data-bind="options.0.name"]'), null);
+  // copy it: two unnamed packages print as Option 1 / Option 2; tabs say Package 1 / 2
+  win.document.querySelector('[data-act="dupOpt"]').click();
+  const t = win.CPB.buildText(win.CPB.state);
+  assert.ok(t.includes('Option 1 — 20 guests') && t.includes('Option 2 — 20 guests'), t);
+  assert.ok(!/\[Package name\]/.test(t));
+  assert.deepEqual([...win.document.querySelectorAll('.opt-tabs .chip')].map(b => b.textContent), ['Package 1', 'Package 2']);
+  assert.ok(win.document.querySelector('[data-bind="options.1.name"]'), 'name box shows once there are two');
+  // naming is optional, and a name reads as "<name> option"
+  win.CPB.state.options[1].name = 'Plus';
+  assert.ok(win.CPB.buildText(win.CPB.state).includes('Plus option — 20 guests'));
+  const c2 = win.CPB.checks(win.CPB.state, win.CPB.buildText(win.CPB.state)).find(c => c.title.startsWith('Every line'));
+  assert.equal(c2.level, 'ok');
+});
