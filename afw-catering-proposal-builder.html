@@ -41,6 +41,12 @@
       - Allergens are never assumed. "Unset" prints as
         "Contains: [fill in]" — only an explicit tick prints
         "none of the major allergens".
+      - Dietary tags must be DECLARED (AFW staff, 2026-10): a
+        member who tags a dish V/VG/GF/DF confirms they checked
+        its ingredients and how it's made (changing the tags
+        clears that), and every tagged dish is listed under
+        "Dietary options:" in that option of the proposal.
+        Unconfirmed tags are flagged in the check, not blocked.
 
   · MATH (all money is held in whole cents, rounded half up):
         pans needed  = ceil(guests for this dish ÷ serves)
@@ -510,7 +516,7 @@
   function blankItem(){
     return { id:uid('i'), name:'', size:'', sizeOther:'', serves:null, pricePerPan:null,
              forWho:'all', forGuests:null, pansOverride:null,
-             tags:[], allergens:[], allergenNone:false, panCalc:blankPanCalc() };
+             tags:[], tagsConfirmed:false, allergens:[], allergenNone:false, panCalc:blankPanCalc() };
   }
   function blankOption(name){ return { id:uid('o'), name:name || '', items:[blankItem()] }; }
   function presetExtras(){
@@ -659,6 +665,17 @@
   }
 
   // ================= the proposal text =================
+  // Vegan dishes are vegetarian too, so they're listed under both.
+  const DIET_SUMMARY = [['Vegetarian',['V','VG']],['Vegan',['VG']],['Gluten-free',['GF']],['Dairy-free',['DF']]];
+  function dietaryLines(rows){
+    const out = [];
+    DIET_SUMMARY.forEach(([lbl, tags]) => {
+      const names = rows.filter(r => (r.it.tags || []).some(t => tags.includes(t)))
+                        .map(r => String(r.it.name || '').trim() || '[Item name]');
+      if (names.length) out.push(`${lbl}: ${names.join(', ')}`);
+    });
+    return out.length ? ['Dietary options:'].concat(out) : [];
+  }
   function tagText(tags){
     const set = new Set(tags || []);
     if (set.has('VG')) set.delete('V');               // vegan already says vegetarian
@@ -799,6 +816,8 @@
       const oc = optionCalc(st, o);
       const rows = oc.rows.length ? oc.rows : [{ it:blankItem(), c:itemCalc(blankItem(), num(st.event.guests)) }];
       rows.forEach(r => { itemLines(r.it, r.c).forEach(l => lines.push(l)); lines.push(''); });
+      const diet = dietaryLines(oc.rows);
+      if (diet.length){ diet.forEach(l => lines.push(l)); lines.push(''); }
       totalLines(st, oc).forEach(l => lines.push(l));
     });
     lines.push('');
@@ -894,12 +913,16 @@
     const pgOk = g > 0 && opts.every(o => optionCalc(st, o).allComplete);
     add(pgOk, 'A per-person price is shown', pgOk ? 'Shown on every option’s Total line.' : 'Needs the guest count and every price filled in.', 1);
 
-    const al = [];
+    const al = [], unconf = [];
     opts.forEach(o => optionItems(o).forEach(it => {
       if (!(it.allergens && it.allergens.length) && !it.allergenNone) al.push(itemLabel(it));
+      if ((it.tags || []).length && !it.tagsConfirmed && !unconf.includes(itemLabel(it))) unconf.push(itemLabel(it));
     }));
-    add(!al.length, 'Dietary tags and allergens are on every item',
-        al.length ? `Allergens not set: ${al.join(', ')}` : 'Every dish lists its allergens. Double-check the diet tags — the tool can’t tell a dish with no tags from one you forgot.', 1);
+    const tagMsg = [];
+    if (al.length) tagMsg.push(`Allergens not set: ${al.join(', ')}`);
+    if (unconf.length) tagMsg.push(`Diet tags not yet declared: ${unconf.join(', ')} — confirm you’ve checked them in Step 2`);
+    add(!tagMsg.length, 'Dietary tags and allergens are on every item',
+        tagMsg.join(' · ') || 'Every dish lists its allergens and every diet tag is declared. Double-check the tags — the tool can’t tell a dish with no tags from one you forgot.', 1);
 
     const tm = [];
     if (!st.event.serviceStyle && !String(st.wording.service || '').trim()) tm.push('service style (Step 1)');
@@ -997,7 +1020,7 @@
     let d = addDays(new Date(today.getFullYear(), today.getMonth(), today.getDate()), 7);
     while (d.getDay() !== 5) d = addDays(d, 1);         // the example says Friday
     const it = (name, size, serves, price, tags, allergens, extra) =>
-      Object.assign(blankItem(), { name, size, serves, pricePerPan:price, tags, allergens }, extra || {});
+      Object.assign(blankItem(), { name, size, serves, pricePerPan:price, tags, allergens, tagsConfirmed:tags.length > 0 }, extra || {});
     const classic = () => [
       it('Beef lasagna', 'full', 10, 75, [], ['wheat','milk','eggs'], { forWho:'some', forGuests:30 }),
       it('Vegetarian lasagna', 'full', 10, 70, ['V'], ['wheat','milk','eggs'], { forWho:'some', forGuests:10 }),
@@ -1154,7 +1177,8 @@
       <div class="calc-strip" id="calc_${key}"></div>
       <div class="field"><span class="lbl">Diet tags</span>
         <div class="seg">${TAGS.map(([t, l]) => `<button type="button" class="chip" data-act="tag" data-path="${p}.tags" data-val="${t}" ${pressed(it.tags.includes(t))}>${t} <small>${l}</small></button>`).join('')}</div>
-        <span class="hint">Only tag what you’re sure of.</span></div>
+        <span class="hint">Only tag what you’re sure of. AFW asks you to declare every dish you tag — tagged dishes are also listed under “Dietary options” in your proposal.</span>
+        ${it.tags.length ? `<div class="seg" style="margin-top:8px"><button type="button" class="chip" data-act="toggle" data-path="${p}.tagsConfirmed" ${pressed(it.tagsConfirmed)}>${it.tagsConfirmed ? '✓ Declared: ' : 'I declare '}${esc(tagText(it.tags) || it.tags.join(', '))} — I’ve checked the ingredients and how it’s made</button></div>` : ''}</div>
       <div class="field"><span class="lbl">Contains (major allergens)</span>
         <div class="seg">${ALLERGENS.map(a => `<button type="button" class="chip" data-act="allergen" data-path="${p}" data-val="${a}" ${pressed(it.allergens.includes(a))}>${a}</button>`).join('')}</div>
         <div class="seg" style="margin-top:8px"><button type="button" class="chip none" data-act="allergenNone" data-path="${p}" ${pressed(it.allergenNone)}>None of the major allergens</button></div>
@@ -1560,6 +1584,7 @@
       case 'tag': {
         const arr = getPath(S, path), i = arr.indexOf(val);
         if (i >= 0) arr.splice(i, 1); else arr.push(val);
+        getPath(S, path.replace(/\.tags$/, '')).tagsConfirmed = false;   // a declaration covers the tags it was made for
         rerenderKeepFocus(b); break;
       }
       case 'allergen': {
@@ -1672,7 +1697,7 @@
   window.CPB = {
     get state(){ return S; },
     collectState, applyState, normalize, sampleState, blankState,
-    buildText, optionCalc, itemCalc, extraCalc, panCalc, panCalcToItem, termFacts, checks, dietaryCheck,
+    buildText, dietaryLines, optionCalc, itemCalc, extraCalc, panCalc, panCalcToItem, termFacts, checks, dietaryCheck,
     autoPaymentLine, autoSetupLine, autoServiceLine, money, money2, refresh, renderAll,
     SERVING_GUIDE, FILE_VERSION
   };

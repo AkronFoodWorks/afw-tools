@@ -31,6 +31,8 @@ function load(opts = {}){
   return dom.window;
 }
 
+/* The lesson's worked example, plus the Dietary options block AFW added
+   (2026-10: members declare every dish they tag V/VG/GF/DF). */
 const WORKED_EXAMPLE = `Towpath Catering Co.
 Classic option — 40 guests
 
@@ -45,6 +47,11 @@ Garden salad, full pan — serves 15 — $45
 
 Garlic bread, tray — serves 12 — $24
 4 trays = $96 · V · Contains: wheat, milk
+
+Dietary options:
+Vegetarian: Vegetarian lasagna, Garden salad, Garlic bread
+Vegan: Garden salad
+Gluten-free: Garden salad
 
 Total: $526 ($13.15 per guest)
 
@@ -114,7 +121,7 @@ test('Two options: one business line, options separated, terms once', () => {
   assert.equal((t.match(/Towpath Catering Co\./g) || []).length, 1);
   assert.equal((t.match(/^Payment terms:/gm) || []).length, 1);
   assert.ok(t.includes('Total: $526 ($13.15 per guest)\n\nPlus option — 40 guests\n\n'));
-  assert.ok(t.includes('Brownies, tray — serves 20 — $50\n2 trays = $100 · V · Contains: wheat, milk, eggs\n\nTotal: $626 ($15.65 per guest)\n\nService style:'));
+  assert.ok(t.includes('Brownies, tray — serves 20 — $50\n2 trays = $100 · V · Contains: wheat, milk, eggs\n\nDietary options:\nVegetarian: Vegetarian lasagna, Garden salad, Garlic bread, Brownies\nVegan: Garden salad\nGluten-free: Garden salad\n\nTotal: $626 ($15.65 per guest)\n\nService style:'));
 });
 
 test('Extras: flat, per guest, per hour with minimum, per mile', () => {
@@ -339,4 +346,35 @@ test('Reheating and holding line is optional and sits after Setup and supplies',
   const win2 = load();
   win2.CPB.applyState(old);
   assert.equal(win2.CPB.state.reheating, '');
+});
+
+test('Diet tags must be declared; the proposal lists every tagged dish', () => {
+  const win = load();
+  const st = classicOnly(sampleIn(win));
+  const tagCheck = () => win.CPB.checks(st, win.CPB.buildText(st)).find(c => c.title.startsWith('Dietary tags'));
+  assert.equal(tagCheck().ok, true);                 // sample dishes are declared
+  st.options[0].items[2].tagsConfirmed = false;      // garden salad
+  assert.equal(tagCheck().ok, false);
+  assert.match(tagCheck().detail, /Diet tags not yet declared: Garden salad/);
+  // the proposal still lists it (a warning, never a block)
+  assert.ok(win.CPB.buildText(st).includes('Gluten-free: Garden salad'));
+  // an option with no tagged dishes gets no Dietary options block
+  st.options[0].items.forEach(it => { it.tags = []; });
+  assert.ok(!win.CPB.buildText(st).includes('Dietary options'));
+  // old files: tags without a declaration load as undeclared
+  const win2 = load();
+  win2.CPB.applyState({ event:{ guests:10 }, options:[{ name:'A', items:[{ name:'Salad', size:'full', serves:10, pricePerPan:40, tags:['GF'] }] }] });
+  assert.equal(win2.CPB.state.options[0].items[0].tagsConfirmed, false);
+});
+
+test('Changing a tag in the page clears the declaration', () => {
+  const win = load();
+  sampleIn(win);
+  win.document.querySelector('#stepnav [data-val="1"]').click();
+  const salad = () => win.CPB.state.options[0].items[2];
+  assert.equal(salad().tagsConfirmed, true);
+  win.document.querySelector('[data-act="tag"][data-path="options.0.items.2.tags"][data-val="DF"]').click();
+  assert.equal(salad().tagsConfirmed, false);
+  win.document.querySelector('[data-act="toggle"][data-path="options.0.items.2.tagsConfirmed"]').click();
+  assert.equal(salad().tagsConfirmed, true);
 });
