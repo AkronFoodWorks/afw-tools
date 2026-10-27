@@ -1,0 +1,1687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Akron Food Works — Catering Proposal Builder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400;0,9..144,500;0,9..144,600;0,9..144,900;1,9..144,400;1,9..144,500&family=Hanken+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+<!--
+  ============================================================
+  AKRON FOOD WORKS — CATERING PROPOSAL BUILDER
+  ============================================================
+  BUILD NOTES (staff / maintainer)
+
+  · Design system matches the Tool Hub / Pre-Sell / SOP Builder
+    family: Fraunces (display) + Hanken Grotesk (body); cream /
+    forest green / amber / gold palette. :root vars copied
+    verbatim from afw-pre-sell-order-form.html.
+
+  · PURPOSE: the catering-referral mini-lesson, turned into a
+    builder. A member answering an AFW catering referral enters
+    menu, prices, extras, and terms; the tool writes a plain-text
+    proposal in the lesson's exact format, ready to paste into an
+    email to Erica or Regina (<first name>@thewellakron.com).
+    Plain text on purpose: Erica/Regina paste every member's
+    proposal into ONE email to the client, so tables, columns,
+    and images would not survive.
+
+  · AFW POLICY GUARDRAILS (do not change without staff sign-off):
+      - AFW charges NO service fee. There is no AFW fee or
+        percentage anywhere in this tool.
+      - Terms (deposit, refunds, when payment is due) belong to
+        the member. The tool offers two EXAMPLE starting points
+        and guidance; it never sets terms for them.
+      - The eligibility card (AFW kitchen, policies, good
+        standing, nothing past due) is a reminder. It never
+        blocks anything.
+      - Sales tax is the member's responsibility. The tool gives
+        a place to enter it; showing it is the member's choice.
+      - Allergens are never assumed. "Unset" prints as
+        "Contains: [fill in]" — only an explicit tick prints
+        "none of the major allergens".
+
+  · MATH (all money is held in whole cents, rounded half up):
+        pans needed  = ceil(guests for this dish ÷ serves)
+        line total   = pans × price per pan
+        option total = sum of lines (+ paid extras, + tax line
+                       if the member chose to show one)
+        per guest    = option total ÷ guests, to the cent
+      "This dish is for some guests" exists because split dishes
+      (beef + vegetarian lasagna) share the guest count — the
+      lesson's worked example is 3 + 1 pans, not 4 + 4.
+      Per-hour extras: rate × max(hours, minimum hours) × staff.
+      The minimum is MINIMUM HOURS PER STAFF PERSON (staff call
+      2026-10, the program had no prior definition).
+      "N days before the event" always means calendar days.
+
+  · PAN PRICING PANEL ("Help me price this pan"): a straight
+    port of the Pan Pricing Calculator tab in
+    afw-pan-pricing-toolkit.xlsx, same blank-cell rules:
+        food wt      = full − empty
+        servings     = food wt ÷ serving oz        (NOT rounded)
+        total cost   = ingredients + labor + packaging
+        cost/serving = total cost ÷ servings
+        price/serv.  = cost/serving ÷ (1 − margin)  (blank if margin ≥ 100%)
+        price/pan    = price/serving × servings
+      Serving-size presets are the Serving Size Guide tab's
+      ranges, verbatim. The ONE step the workbook doesn't have:
+      "Use these numbers" puts serves = servings ROUNDED DOWN to
+      whole plates (a proposal can't say "serves 34.29") and
+      price per pan rounded to the cent. If the workbook changes,
+      update panCalc() and SERVING_GUIDE together.
+
+  · DATA MODEL: no browser storage (same reasoning as the other
+    tools). collectState()/applyState() feed both the JSON
+    download and the optional cloud bar. The file carries
+    fileVersion; applyState() merges onto fresh defaults and runs
+    MIGRATIONS in order, so every older file keeps loading. Add a
+    migration step — never change the meaning of an old field.
+
+  · CLOUD SAVE: tool key 'catering-proposal' (permanent — see the
+    README registry and mountSavedWork in index.html). Guarded,
+    so the page works fully with afw-config.js / afw-cloud.js
+    missing. afw-cloud.js exports mountToolBar — there is no
+    AFWCloud.init().
+
+  · TESTS: tests/catering-proposal-builder.test.cjs (jsdom) —
+    loads the worked example and checks every number and the
+    exact text. window.CPB exposes the pure functions for it.
+
+  · MINI-LESSON LINK: set MINI_LESSON_URL below once it exists.
+
+  · No external dependencies beyond Google Fonts.
+  ============================================================
+-->
+<style>
+  :root{
+    --cream:#FBF6EC;
+    --paper:#FFFDF8;
+    --ink:#23372B;
+    --ink-soft:#4A5A4E;
+    --ink-faint:#7C897F;
+    --green:#2C5440;
+    --green-deep:#1E3A2D;
+    --amber:#C8612E;
+    --amber-soft:#E89B5A;
+    --gold:#D9A441;
+    --line:#E2D9C6;
+    --good-bg:#E7EFE5;
+    --warn-bg:#F7EDD2;
+    --shadow:0 18px 40px -22px rgba(30,58,45,.45);
+    --display:'Fraunces',Georgia,serif;
+    --body:'Hanken Grotesk',system-ui,sans-serif;
+    /* palette bridge for the shared cloud bar (afw-cloud.js) */
+    --afw-cream: var(--cream);
+    --afw-forest: var(--green-deep);
+    --afw-amber: var(--amber);
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    font-family:var(--body);color:var(--ink);
+    background:
+      radial-gradient(1200px 600px at 85% -8%, rgba(217,164,65,.16), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(44,84,64,.12), transparent 55%),
+      var(--cream);
+    min-height:100vh;line-height:1.55;padding:0 16px 120px;
+  }
+  .wrap{max-width:760px;margin:0 auto}
+  button{font-family:inherit;cursor:pointer}
+  /* 16px keeps iOS from zooming into fields */
+  input,select,textarea{font-family:inherit;font-size:16px}
+  input:focus-visible,select:focus-visible,button:focus-visible,textarea:focus-visible,summary:focus-visible,a:focus-visible{outline:2.5px solid var(--green);outline-offset:2px}
+
+  /* header */
+  header{padding:30px 0 6px}
+  .brand{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+  .brand-name{font-family:var(--display);font-weight:600;font-size:1.1rem;color:var(--green-deep)}
+  .brand-sub{font-size:.7rem;letter-spacing:.18em;text-transform:uppercase;color:var(--ink-soft);font-weight:600}
+  .eyebrow{font-size:.72rem;letter-spacing:.2em;text-transform:uppercase;color:var(--amber);font-weight:700;margin:22px 0 10px}
+  h1{font-family:var(--display);font-weight:500;font-size:clamp(1.8rem,7vw,2.6rem);line-height:1.06;letter-spacing:-.01em;max-width:22ch}
+  h1 em{font-style:italic;color:var(--green)}
+  .lede{margin-top:12px;font-size:1rem;color:var(--ink-soft);max-width:62ch}
+
+  /* toolbar */
+  .toolbar{display:flex;flex-wrap:wrap;gap:8px;margin:18px 0 6px}
+  .btn{
+    min-height:44px;padding:10px 16px;border-radius:10px;font-weight:700;font-size:.92rem;
+    border:1.5px solid var(--green);background:transparent;color:var(--green);
+  }
+  .btn:hover{background:var(--good-bg)}
+  .btn-primary{background:var(--green);color:var(--cream)}
+  .btn-primary:hover{background:var(--green-deep)}
+  .btn-quiet{border-color:var(--line);color:var(--ink-soft)}
+  .btn-danger{border-color:transparent;color:var(--amber);padding-left:8px;padding-right:8px}
+  .btn-danger:hover{background:var(--warn-bg)}
+  .btn-dashed{border-style:dashed;width:100%}
+  .flash{font-size:.88rem;font-weight:600;color:var(--green);margin-top:8px;min-height:1.3em}
+  .flash.bad{color:var(--amber)}
+
+  /* step nav */
+  .stepnav{
+    display:flex;gap:6px;overflow-x:auto;margin:18px -16px 0;padding:4px 16px 8px;
+    scrollbar-width:none;
+  }
+  .stepnav::-webkit-scrollbar{display:none}
+  .stepnav button{
+    flex:0 0 auto;min-height:44px;padding:8px 14px;border-radius:999px;
+    border:1.5px solid var(--line);background:var(--paper);color:var(--green-deep);
+    font-weight:600;font-size:.9rem;display:inline-flex;align-items:center;gap:7px;
+  }
+  .stepnav .n{
+    display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;
+    background:var(--cream);font-size:.75rem;font-weight:700;color:var(--amber);
+  }
+  .stepnav button[aria-current="step"]{background:var(--green);border-color:var(--green);color:var(--cream)}
+  .stepnav button[aria-current="step"] .n{background:var(--gold);color:var(--green-deep)}
+
+  /* cards */
+  .card{
+    background:var(--paper);border:1px solid var(--line);border-radius:16px;
+    padding:20px 18px;margin-top:18px;box-shadow:var(--shadow);
+  }
+  .card h2{font-family:var(--display);font-weight:600;font-size:1.3rem;color:var(--green-deep);line-height:1.2}
+  .card h3{font-family:var(--display);font-weight:600;font-size:1.08rem;color:var(--green-deep);margin-bottom:2px}
+  .sub{font-size:.9rem;color:var(--ink-soft);margin:4px 0 14px}
+  .step[hidden]{display:none}
+
+  .guide-card{
+    margin-top:18px;background:linear-gradient(140deg,var(--green-deep),var(--green) 78%);
+    color:var(--cream);border-radius:18px;padding:20px 20px;
+    box-shadow:var(--shadow), inset 0 0 0 1px rgba(217,164,65,.28);
+  }
+  .guide-card h2{font-family:var(--display);font-weight:500;font-style:italic;font-size:1.2rem}
+  .guide-card ul{margin:10px 0 14px 1.1em;font-size:.95rem;color:rgba(251,246,236,.9)}
+  .guide-card li{margin:3px 0}
+  .guide-card .btn{border-color:var(--gold);color:var(--cream)}
+  .guide-card .btn:hover{background:rgba(217,164,65,.18)}
+  .guide-card .btn[aria-pressed="true"]{background:var(--gold);color:var(--green-deep)}
+
+  /* fields */
+  .grid2{display:grid;gap:14px;grid-template-columns:1fr}
+  @media (min-width:560px){.grid2{grid-template-columns:1fr 1fr}}
+  .field{margin-top:14px}
+  .grid2 .field{margin-top:0}
+  .grid2 + .field,.field + .grid2,.grid2 + .grid2{margin-top:14px}
+  .field > label,.lbl{display:block;font-size:.88rem;font-weight:700;color:var(--green-deep);margin-bottom:6px}
+  .hint{display:block;font-size:.8rem;font-weight:400;color:var(--ink-faint);margin-top:4px}
+  .req{color:var(--amber)}
+  .field input,.field select,.field textarea{
+    width:100%;min-height:48px;padding:10px 12px;border:1px solid var(--line);border-radius:10px;
+    background:var(--cream);color:var(--ink);
+  }
+  .field textarea{min-height:72px;resize:vertical}
+  .field input::placeholder,.field textarea::placeholder{color:var(--ink-faint)}
+  .adorn{display:flex;align-items:stretch}
+  .adorn span{
+    display:grid;place-items:center;padding:0 10px;border:1px solid var(--line);
+    background:var(--paper);color:var(--ink-soft);font-weight:600;
+  }
+  .adorn .pre{border-right:none;border-radius:10px 0 0 10px}
+  .adorn .post{border-left:none;border-radius:0 10px 10px 0}
+  .adorn .pre + input{border-radius:0 10px 10px 0}
+  .adorn input:has(+ .post){border-radius:10px 0 0 10px}
+  .adorn .pre + input:has(+ .post){border-radius:0}
+
+  /* segmented choices + chips */
+  .seg{display:flex;flex-wrap:wrap;gap:8px}
+  .seg button,.chip{
+    min-height:44px;padding:9px 15px;border-radius:999px;
+    border:1.5px solid var(--line);background:var(--paper);color:var(--green-deep);
+    font-weight:600;font-size:.92rem;
+  }
+  .seg button:hover,.chip:hover{border-color:var(--gold)}
+  .seg button[aria-pressed="true"],.chip[aria-pressed="true"]{background:var(--green);border-color:var(--green);color:var(--cream)}
+  .chip.none[aria-pressed="true"]{background:var(--amber);border-color:var(--amber)}
+  .chip small{font-weight:500;opacity:.8}
+
+  /* menu items */
+  .opt-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+  .item{border:1px solid var(--line);border-radius:14px;background:var(--cream);padding:16px 14px;margin-top:14px}
+  .item-head{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:4px}
+  .item-num{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--ink-faint)}
+  .item .field input,.item .field select{background:var(--paper)}
+  .calc-strip{
+    margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--good-bg);
+    border:1px solid rgba(44,84,64,.18);font-size:.92rem;
+  }
+  .calc-strip b{font-family:var(--display);font-size:1.08rem;color:var(--green-deep)}
+  .calc-strip.warn{background:var(--warn-bg);border-color:rgba(200,97,46,.25)}
+  .warn-text{color:var(--amber);font-weight:600;font-size:.86rem;margin-top:6px}
+
+  details.panel{margin-top:14px;border:1.5px dashed var(--green);border-radius:12px;background:var(--paper)}
+  details.panel > summary{
+    list-style:none;cursor:pointer;min-height:48px;padding:12px 14px;
+    font-weight:700;color:var(--green);display:flex;align-items:center;gap:8px;
+  }
+  details.panel > summary::-webkit-details-marker{display:none}
+  details.panel > summary::before{content:"▸";transition:transform .15s}
+  details.panel[open] > summary::before{transform:rotate(90deg)}
+  details.panel .panel-body{padding:0 14px 16px}
+  .pc-step{font-size:.72rem;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--amber);margin-top:16px}
+  .pc-out{font-size:.9rem;color:var(--ink-soft);margin-top:8px}
+  .pc-out b{color:var(--green-deep)}
+  .guide-note{font-size:.84rem;color:var(--ink-soft);margin-top:8px}
+
+  .total-box{
+    margin-top:18px;padding:16px;border-radius:12px;background:var(--green-deep);color:var(--cream);
+  }
+  .total-box .big{font-family:var(--display);font-size:1.5rem;font-weight:600}
+  .total-box p{font-size:.9rem;color:rgba(251,246,236,.85);margin-top:4px}
+  .soft{margin-top:12px;padding:12px 14px;border-radius:10px;background:var(--cream);border:1px solid var(--line);font-size:.9rem}
+  .soft.ok{background:var(--good-bg)}
+  .soft.warn{background:var(--warn-bg)}
+
+  /* extras */
+  .extra{border-top:1px dashed var(--line);padding:14px 0}
+  .extra:first-of-type{border-top:none}
+  .extra-name{font-weight:700;color:var(--green-deep);margin-bottom:8px}
+  .extra .calc{font-size:.9rem;color:var(--ink-soft);margin-top:8px}
+  .extra .calc b{color:var(--green-deep)}
+
+  /* terms guidance */
+  .term{border-top:1px dashed var(--line);padding:16px 0 4px}
+  .term:first-of-type{border-top:none;padding-top:4px}
+  .think{font-size:.88rem;color:var(--ink-soft);margin-top:4px}
+  .think i{font-family:var(--display);color:var(--green-deep)}
+  .dates{margin-top:16px;padding:14px;border-radius:12px;background:var(--good-bg);border:1px solid rgba(44,84,64,.18);font-size:.92rem}
+  .dates dt{font-weight:700;color:var(--green-deep)}
+  .dates dd{margin:0 0 8px}
+  .legal{font-size:.88rem;background:var(--warn-bg);border-radius:10px;padding:12px 14px;margin-top:12px}
+  .wording{margin-top:14px;padding:12px 14px;border-radius:10px;background:var(--cream);border:1px solid var(--line)}
+  .wording .auto{font-size:.9rem;color:var(--ink);margin:4px 0 0;white-space:pre-wrap}
+
+  /* review */
+  .preview{
+    white-space:pre-wrap;word-wrap:break-word;font-family:var(--body);font-size:.95rem;line-height:1.5;
+    background:#fff;border:1px solid var(--line);border-radius:12px;padding:16px;color:#1d1d1d;
+    max-height:none;
+  }
+  .checks{list-style:none;margin-top:6px}
+  .checks li{display:grid;grid-template-columns:28px 1fr;gap:8px;padding:10px 0;border-top:1px dashed var(--line);font-size:.93rem}
+  .checks li:first-child{border-top:none}
+  .checks .ic{font-weight:700;font-size:1.05rem;line-height:1.4}
+  .checks .ok .ic{color:var(--green)}
+  .checks .warn .ic{color:var(--amber)}
+  .checks .detail{display:block;font-size:.84rem;color:var(--ink-soft)}
+  .checks button{margin-top:6px}
+  .send-row{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+  .send-row .btn{flex:1 1 150px}
+  .links{font-size:.92rem;margin-top:10px}
+  .links a{color:var(--amber);font-weight:600}
+  .links li{margin:6px 0 6px 1.1em}
+
+  /* sticky bottom bar */
+  .bottombar{
+    position:fixed;left:0;right:0;bottom:0;z-index:20;
+    background:rgba(255,253,248,.97);border-top:1px solid var(--line);
+    box-shadow:0 -10px 30px -20px rgba(30,58,45,.5);
+    padding:10px 16px calc(10px + env(safe-area-inset-bottom));
+  }
+  .bottombar .in{max-width:760px;margin:0 auto;display:flex;align-items:center;gap:10px}
+  .bottombar .sum{flex:1;font-size:.86rem;color:var(--ink-soft);line-height:1.25;min-width:0}
+  .bottombar .sum b{display:block;font-family:var(--display);font-size:1.02rem;color:var(--green-deep);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+  footer{
+    margin-top:48px;padding-top:22px;border-top:1px solid var(--line);
+    display:flex;flex-wrap:wrap;gap:8px 24px;align-items:baseline;
+    font-size:.82rem;color:var(--ink-soft);
+  }
+  footer .fbrand{font-family:var(--display);font-weight:600;color:var(--green-deep);font-size:.9rem}
+  .sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0}
+
+  #printOut{display:none}
+  @media print{
+    .no-print,.wrap > *:not(#printOut){display:none !important}
+    body{padding:0;background:#fff}
+    #printOut{display:block;white-space:pre-wrap;font-family:var(--body);font-size:11.5pt;line-height:1.45;color:#000}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="no-print">
+    <div class="brand">
+      <span class="brand-name">Akron Food Works</span>
+      <span class="brand-sub">a program of The Well CDC</span>
+    </div>
+    <p class="eyebrow">Catering Proposal Builder</p>
+    <h1>Write a proposal the client can say <em>yes</em> to</h1>
+    <p class="lede">Got a catering referral? Fill in your menu, prices, and terms, step by step. You'll get a clean, plain-text proposal to paste into an email to Erica or Regina.</p>
+  </header>
+
+  <!-- CLOUD SAVE: signed out this shows the email sign-in form;
+       signed in it saves this proposal to the member's account.
+       Save progress (.json) below works with or without it. -->
+  <div id="afw-toolbar" class="no-print" style="margin:16px 0 0"></div>
+
+  <div class="toolbar no-print">
+    <button type="button" class="btn" data-act="sample">Load sample</button>
+    <button type="button" class="btn" data-act="save">Save progress</button>
+    <button type="button" class="btn" data-act="load">Load progress</button>
+    <button type="button" class="btn btn-quiet" data-act="startOver">Start over</button>
+    <input type="file" id="fileImport" accept=".json,application/json" hidden>
+  </div>
+  <p class="flash no-print" id="flash" role="status" aria-live="polite"></p>
+
+  <nav class="stepnav no-print" id="stepnav" aria-label="Steps"></nav>
+
+  <main class="no-print">
+    <section class="step" id="step1" aria-labelledby="h-step1"></section>
+    <section class="step" id="step2" aria-labelledby="h-step2" hidden></section>
+    <section class="step" id="step3" aria-labelledby="h-step3" hidden></section>
+    <section class="step" id="step4" aria-labelledby="h-step4" hidden></section>
+    <section class="step" id="step5" aria-labelledby="h-step5" hidden></section>
+  </main>
+
+  <footer class="no-print">
+    <span class="fbrand">Akron Food Works</span>
+    <span>Create · Incubate · Elevate</span>
+    <span>647 E. Market St., Akron, Ohio</span>
+  </footer>
+
+  <!-- print / save-as-PDF shows only the proposal text -->
+  <div id="printOut" aria-hidden="true"></div>
+</div>
+
+<div class="bottombar no-print">
+  <div class="in">
+    <button type="button" class="btn btn-quiet" data-act="prev" id="btnPrev">Back</button>
+    <div class="sum" id="miniSum" aria-live="polite"></div>
+    <button type="button" class="btn btn-primary" data-act="next" id="btnNext">Next</button>
+  </div>
+</div>
+
+<!-- ---------- cloud save (see afw-cloud.js) ----------
+     Order matters: config, then the engine, then this tool's own
+     script — which calls AFWCloud.mountToolBar at the bottom. -->
+<script src="./afw-config.js"></script>
+<script src="./afw-cloud.js"></script>
+
+<script>
+(function(){
+  'use strict';
+
+  // ================= constants =================
+  const FILE_VERSION = 1;
+  const MINI_LESSON_URL = '';                       // TODO: staff will supply
+  const TOOLKIT_URL = './afw-pan-pricing-toolkit.xlsx';
+  const AFW_CONTACTS = [
+    { name:'Erica',  email:'erica@thewellakron.com' },
+    { name:'Regina', email:'regina@thewellakron.com' }
+  ];
+
+  const STEPS = ['Event','Menu','Extras','Terms','Review'];
+
+  // Output order matches the lesson's worked example ("wheat, milk, eggs").
+  const ALLERGENS = ['wheat','milk','eggs','fish','shellfish','tree nuts','peanuts','soy','sesame'];
+  const TAGS = [['V','Vegetarian'],['VG','Vegan'],['GF','Gluten-free'],['DF','Dairy-free']];
+  const SIZES = [['full','Full pan'],['half','Half pan'],['tray','Tray'],['other','Other']];
+  const STYLES = [['pickup','Pickup at AFW'],['delivery','Delivery'],['onsite','On-site service']];
+
+  // Serving Size Guide tab of the Pan Pricing Toolkit, verbatim.
+  const SERVING_GUIDE = [
+    { type:'Protein — main course',             lo:6, hi:8,  note:'Bone-in cuts run heavier. This is the star of the plate.' },
+    { type:'Protein — buffet / multiple dishes', lo:4, hi:5,  note:"People take less when there's variety on the table." },
+    { type:'Rice / starch — as the anchor',      lo:6, hi:8,  note:'e.g. jollof where rice is the main event.' },
+    { type:'Rice / starch — as a side',          lo:4, hi:6,  note:'About ¾–1 cup cooked.' },
+    { type:'Casserole (lasagna) — main',         lo:8, hi:10, note:'Roughly 1/8 to 1/10 of a 9×13 pan.' },
+    { type:'Casserole — side / buffet',          lo:5, hi:6,  note:'Smaller cut alongside other mains.' },
+    { type:'Vegetables / sides',                 lo:3, hi:4,  note:'Greens, beans, roasted veg.' },
+    { type:'Stew / soup (with a starch)',        lo:8, hi:10, note:'By weight in the bowl, starch served separately.' }
+  ];
+
+  // short = how it reads inside the "Setup and supplies" sentence
+  const EXTRA_PRESETS = [
+    { id:'warmers',     label:'Warmers, racks, and sternos', short:'warmers (racks and sternos)', charges:['flat','perGuest','perHour'] },
+    { id:'linens',      label:'Table linens',                short:'table linens',                charges:['flat','perGuest'] },
+    { id:'dishes',      label:'Dishes and silverware',       short:'dishes and silverware',       charges:['flat','perGuest'] },
+    { id:'disposables', label:'Disposables (plates, bowls, cutlery, napkins)', short:'disposables (plates, bowls, cutlery, napkins)', charges:['perGuest','flat'] },
+    { id:'utensils',    label:'Serving utensils',            short:'serving utensils',            charges:['flat','perGuest'] },
+    { id:'delivery',    label:'Delivery',                    short:'delivery',                    charges:['flat','perMile'] },
+    { id:'staff',       label:'On-site service staff',       short:'on-site service staff',       charges:['perHour','flat'] },
+    { id:'setup',       label:'Setup and breakdown',         short:'setup and breakdown',         charges:['flat','perHour'] }
+  ];
+  const CUSTOM_CHARGES = ['flat','perGuest','perHour'];
+  const CHARGE_LABEL = { flat:'Flat amount', perGuest:'Per guest', perHour:'Per hour', perMile:'Per mile' };
+
+  const TERM_PRESETS = {
+    simple:   { deposit:{type:'percent',value:50,due:'toBook',dueDays:null}, balance:{due:'atHandoff',days:null}, refund:{type:'nonrefundable',cutoffDays:null,percent:null} },
+    flexible: { deposit:{type:'percent',value:25,due:'toBook',dueDays:null}, balance:{due:'atHandoff',days:null}, refund:{type:'refundable',cutoffDays:7,percent:null} },
+    scratch:  { deposit:{type:'',value:null,due:'toBook',dueDays:null},      balance:{due:'atHandoff',days:null}, refund:{type:'',cutoffDays:null,percent:null} }
+  };
+
+  // ================= small helpers =================
+  let seq = 0;
+  const uid = p => p + Date.now().toString(36) + (++seq).toString(36);
+  const clone = o => JSON.parse(JSON.stringify(o));
+  const esc = v => (v ?? '').toString().replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
+  function num(v){
+    if (v === null || v === undefined || v === '') return null;
+    const n = Number(v);
+    return Number.isFinite(n) ? n : null;
+  }
+  function cents(v){ const n = num(v); return n === null ? null : Math.round(n * 100 + (n >= 0 ? 1e-7 : -1e-7)); }
+  function money(c){
+    if (c === null || c === undefined) return null;
+    const neg = c < 0; c = Math.abs(c);
+    const whole = Math.floor(c / 100), part = c % 100;
+    const s = '$' + whole.toLocaleString('en-US') + (part ? '.' + String(part).padStart(2,'0') : '');
+    return neg ? '-' + s : s;
+  }
+  function money2(c){
+    if (c === null || c === undefined) return null;
+    return '$' + Math.floor(c / 100).toLocaleString('en-US') + '.' + String(c % 100).padStart(2,'0');
+  }
+  const numText = n => String(Math.round(n * 1000) / 1000);
+  const plural = (n, one, many) => n === 1 ? one : (many || one + 's');
+  const daysText = n => n + ' ' + plural(n, 'day');
+  function joinList(arr){
+    if (arr.length <= 1) return arr.join('');
+    if (arr.length === 2) return arr[0] + ' and ' + arr[1];
+    return arr.slice(0,-1).join(', ') + ', and ' + arr[arr.length-1];
+  }
+  const cap = s => s ? s.charAt(0).toUpperCase() + s.slice(1) : s;
+
+  // dates are handled as local calendar days ("YYYY-MM-DD")
+  function parseDate(s){
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s || '');
+    return m ? new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])) : null;
+  }
+  function addDays(d, n){ const x = new Date(d.getTime()); x.setDate(x.getDate() + n); return x; }
+  const isoDate = d => d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0');
+  const niceDate = d => d.toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+  const weekday = d => d.toLocaleDateString('en-US', { weekday:'long' });
+  function time12(t){
+    const m = /^(\d{1,2}):(\d{2})/.exec(t || '');
+    if (!m) return '';
+    let h = Number(m[1]); const ap = h >= 12 ? 'PM' : 'AM';
+    h = h % 12 || 12;
+    return h + ':' + m[2] + ' ' + ap;
+  }
+
+  // ================= state =================
+  function blankCharge(type){ return { type:type, amount:null, rate:null, hours:null, staff:null, minHours:null, miles:null }; }
+  function blankPanCalc(){ return { emptyOz:null, fullOz:null, servingOz:null, guide:'', ingredients:null, labor:null, packaging:null, marginPct:null }; }
+  function blankItem(){
+    return { id:uid('i'), name:'', size:'', sizeOther:'', serves:null, pricePerPan:null,
+             forWho:'all', forGuests:null, pansOverride:null,
+             tags:[], allergens:[], allergenNone:false, panCalc:blankPanCalc() };
+  }
+  function blankOption(name){ return { id:uid('o'), name:name || '', items:[blankItem()] }; }
+  function presetExtras(){
+    return EXTRA_PRESETS.map(p => ({ id:p.id, label:p.label, preset:true, status:'', charge:blankCharge(p.charges[0]) }));
+  }
+  function blankState(){
+    return {
+      _tool:'catering-proposal-builder',
+      fileVersion:FILE_VERSION,
+      savedAt:null,
+      event:{
+        businessName:'', guests:null, eventDate:'', readyTime:'', serviceStyle:'',
+        budgetPerGuest:null, eligibilityConfirmed:false,
+        dietary:{ vegetarian:null, vegan:null, glutenFree:null, dairyFree:null, other:null, otherNote:'' }
+      },
+      options:[blankOption('')],
+      extras:presetExtras(),
+      terms:{
+        preset:'', deposit:clone(TERM_PRESETS.scratch.deposit), balance:clone(TERM_PRESETS.scratch.balance),
+        refund:clone(TERM_PRESETS.scratch.refund), finalCountDays:null, cancelDays:null,
+        paymentMethods:'', pricesGoodDays:null, noticeDays:null, depositOptionId:null
+      },
+      tax:{ mode:'none', type:'rate', rate:null, amount:null, includeExtras:true },
+      wording:{ service:'', setup:'', payment:'' },
+      sentToAfw:false
+    };
+  }
+
+  let S = blankState();
+  const ui = { step:0, opt:0, open:{} };   // not saved
+
+  // ================= the math =================
+  function panCalc(pc){
+    // Pan Pricing Calculator tab, row by row, same "" rules as the workbook.
+    pc = pc || {};
+    const C = num(pc.emptyOz), D = num(pc.fullOz), F = num(pc.servingOz);
+    const H = num(pc.ingredients), I = num(pc.labor), J = num(pc.packaging);
+    const M = num(pc.marginPct) === null ? null : num(pc.marginPct) / 100;
+    const E = (C === null || D === null) ? null : D - C;
+    const G = (E === null || F === null || F === 0) ? null : E / F;
+    const K = (H === null && I === null && J === null) ? null : (H || 0) + (I || 0) + (J || 0);
+    const L = (G === null || G === 0 || K === null) ? null : K / G;
+    const N = (L === null || M === null || M >= 1) ? null : L / (1 - M);
+    const O = (N === null || G === null) ? null : N * G;
+    return { foodWt:E, servings:G, totalCost:K, costPerServing:L, pricePerServing:N, pricePerPan:O };
+  }
+  // What "Use these numbers" writes into the item.
+  function panCalcToItem(r){
+    if (!r || r.servings === null || r.pricePerPan === null) return null;
+    const serves = Math.floor(r.servings + 1e-9);
+    if (serves < 1) return null;
+    return { serves:serves, pricePerPan:Math.round(r.pricePerPan * 100) / 100 };
+  }
+
+  function isBlankItem(it){
+    return !String(it.name || '').trim() && num(it.serves) === null && num(it.pricePerPan) === null;
+  }
+  function countWord(it, n){
+    let w = 'pan';
+    if (it.size === 'tray') w = 'tray';
+    else if (it.size === 'other'){
+      const words = String(it.sizeOther || '').trim().split(/\s+/).filter(Boolean);
+      if (words.length) w = words[words.length - 1].toLowerCase();
+    }
+    if (n === 1) return w;
+    return /s$/.test(w) ? w : w + 's';
+  }
+  function sizeText(it){
+    if (it.size === 'full') return 'full pan';
+    if (it.size === 'half') return 'half pan';
+    if (it.size === 'tray') return 'tray';
+    if (it.size === 'other' && String(it.sizeOther || '').trim()) return String(it.sizeOther).trim();
+    return null;
+  }
+
+  function itemCalc(it, guests){
+    const serves = num(it.serves);
+    const price = cents(it.pricePerPan);
+    const forN = it.forWho === 'some' ? num(it.forGuests) : guests;
+    const auto = (serves > 0 && forN > 0) ? Math.ceil(forN / serves - 1e-9) : null;
+    const ov = num(it.pansOverride);
+    const overridden = ov !== null && ov >= 1;
+    const pans = overridden ? Math.round(ov) : auto;
+    const line = (pans !== null && price !== null) ? pans * price : null;
+    const perPerson = (serves > 0 && price !== null) ? Math.round(price / serves) : null;
+    const coverage = (pans !== null && serves > 0) ? pans * serves : null;
+    const short = coverage !== null && forN > 0 && coverage < forN;
+    return { serves, price, forN, auto, pans, overridden, line, perPerson, coverage, short };
+  }
+
+  function extraCalc(x, guests){
+    const c = x.charge || {};
+    const rate = cents(c.type === 'flat' ? c.amount : c.rate);
+    if (c.type === 'flat') return { cents:rate, detail:'' };
+    if (c.type === 'perGuest'){
+      const ok = rate !== null && guests > 0;
+      return { cents: ok ? rate * guests : null, detail: ok ? `(${money(rate)} per guest × ${guests})` : '' };
+    }
+    if (c.type === 'perHour'){
+      const hrs = num(c.hours), min = num(c.minHours);
+      const staff = num(c.staff) || 1;
+      if (rate === null || hrs === null) return { cents:null, detail:'' };
+      const billed = Math.max(hrs, min || 0);
+      const parts = [];
+      if (staff !== 1) parts.push(`${numText(staff)} staff`);
+      parts.push(`${numText(billed)} ${plural(billed,'hr')}`);
+      parts.push(`${money(rate)}/hr`);
+      let d = '(' + parts.join(' × ');
+      if (min) d += `, ${numText(min)}-hr minimum`;
+      return { cents: Math.round(rate * billed * staff), detail: d + ')', billed };
+    }
+    if (c.type === 'perMile'){
+      const mi = num(c.miles);
+      if (rate === null || mi === null) return { cents:null, detail:'' };
+      return { cents: Math.round(rate * mi), detail: `(${numText(mi)} ${plural(mi,'mile')} × ${money(rate)}/mile)` };
+    }
+    return { cents:null, detail:'' };
+  }
+  function paidExtras(st){
+    const g = num(st.event.guests);
+    return st.extras
+      .filter(x => x.status === 'extra' && String(x.label || '').trim())
+      .map(x => Object.assign({ x:x, label:String(x.label).trim() }, extraCalc(x, g)));
+  }
+
+  function optionItems(o){ return o.items.filter(it => !isBlankItem(it)); }
+  function optionCalc(st, o){
+    const g = num(st.event.guests);
+    const rows = optionItems(o).map(it => ({ it, c:itemCalc(it, g) }));
+    let food = 0, complete = rows.length > 0;
+    rows.forEach(r => { if (r.c.line === null) complete = false; else food += r.c.line; });
+    const extras = paidExtras(st);
+    let extrasSum = 0, extrasComplete = true;
+    extras.forEach(e => { if (e.cents === null) extrasComplete = false; else extrasSum += e.cents; });
+    let tax = null;
+    const t = st.tax || {};
+    if (t.mode === 'line'){
+      if (t.type === 'amount') tax = cents(t.amount);
+      else if (num(t.rate) !== null) tax = Math.round((food + (t.includeExtras ? extrasSum : 0)) * num(t.rate) / 100 + 1e-7);
+    }
+    const total = food + extrasSum + (tax || 0);
+    const allComplete = complete && extrasComplete && (t.mode !== 'line' || tax !== null);
+    const perGuest = g > 0 ? Math.round(total / g) : null;
+    return { rows, food, complete, extras, extrasSum, tax, total, allComplete, perGuest };
+  }
+
+  // ================= the proposal text =================
+  function tagText(tags){
+    const set = new Set(tags || []);
+    if (set.has('VG')) set.delete('V');               // vegan already says vegetarian
+    return TAGS.map(t => t[0]).filter(t => set.has(t)).join(', ');
+  }
+  function allergenText(it){
+    if (it.allergens && it.allergens.length) return ALLERGENS.filter(a => it.allergens.includes(a)).join(', ');
+    if (it.allergenNone) return 'none of the major allergens';
+    return '[fill in]';
+  }
+  function itemLines(it, c){
+    const name = String(it.name || '').trim() || '[Item name]';
+    const size = sizeText(it) || '[pan or tray size]';
+    const serves = c.serves !== null ? numText(c.serves) : '[#]';
+    const price = c.price !== null ? money(c.price) : '$[price per pan]';
+    const l1 = `${name}, ${size} — serves ${serves} — ${price}`;
+    const pans = c.pans !== null ? `${c.pans} ${countWord(it, c.pans)}` : `[#] ${countWord(it, 2)}`;
+    const line = c.line !== null ? money(c.line) : '$[line total]';
+    const tags = tagText(it.tags);
+    const l2 = `${pans} = ${line}` + (tags ? ` · ${tags}` : '') + ` · Contains: ${allergenText(it)}`;
+    return [l1, l2];
+  }
+  function optionHeader(st, o, idx){
+    let name = String(o.name || '').trim() || (st.options.length > 1 ? `Option ${idx + 1}` : '[Option name]');
+    if (!/\boption$/i.test(name)) name += ' option';
+    const g = num(st.event.guests);
+    return `${name} — ${g > 0 ? g + ' ' + plural(g,'guest') : '[number] guests'}`;
+  }
+  function totalLines(st, oc){
+    const out = [];
+    const g = num(st.event.guests);
+    const showTax = (st.tax || {}).mode === 'line';
+    const totalText = oc.allComplete ? money(oc.total) : '$[option total]';
+    const pgText = (oc.allComplete && oc.perGuest !== null) ? money2(oc.perGuest) : '$[per guest]';
+    if (oc.extras.length || showTax){
+      out.push(`Food subtotal: ${oc.complete ? money(oc.food) : '$[food subtotal]'}`);
+      oc.extras.forEach(e => {
+        out.push(`${e.label}${e.detail ? ' ' + e.detail : ''}: ${e.cents !== null ? money(e.cents) : '$[amount]'}`);
+      });
+      if (showTax){
+        const t = st.tax;
+        const lbl = (t.type !== 'amount' && num(t.rate) !== null) ? `Sales tax (${numText(num(t.rate))}%)` : 'Sales tax';
+        out.push(`${lbl}: ${oc.tax !== null ? money(oc.tax) : '$[tax]'}`);
+      }
+      out.push(`Total: ${totalText} (${pgText} per guest, all in)`);
+    } else {
+      out.push(`Total: ${totalText} (${pgText} per guest)`);
+    }
+    return out;
+  }
+
+  function autoServiceLine(st){
+    const e = st.event;
+    const base = { pickup:'Pickup at AFW', delivery:'Delivery to your location', onsite:'On-site service at your event' }[e.serviceStyle];
+    if (!base) return '';
+    const d = parseDate(e.eventDate), t = time12(e.readyTime);
+    let s = base;
+    if (d && t) s += `, ${weekday(d)} by ${t}`;
+    else if (d) s += `, ${weekday(d)}`;
+    else if (t) s += `, ready by ${t}`;
+    const del = st.extras.find(x => x.id === 'delivery');
+    if (e.serviceStyle === 'delivery' && del){
+      if (del.status === 'included') s += ' (delivery included)';
+      if (del.status === 'extra') s += ' (delivery fee listed above)';
+    }
+    return s;
+  }
+  function autoSetupLine(st){
+    const short = x => {
+      const p = EXTRA_PRESETS.find(p => p.id === x.id && x.preset);
+      if (p) return p.short;
+      const l = String(x.label || '').trim();
+      return /^[A-Z][a-z]/.test(l) ? l.charAt(0).toLowerCase() + l.slice(1) : l;
+    };
+    const rows = st.extras.filter(x => x.id !== 'delivery' && String(x.label || '').trim());
+    const inc = rows.filter(x => x.status === 'included').map(short);
+    const paid = rows.filter(x => x.status === 'extra').map(short);
+    const parts = [];
+    if (inc.length) parts.push(joinList(inc) + ' included');
+    if (paid.length) parts.push(joinList(paid) + ' extra (listed above)');
+    return cap(parts.join('; '));
+  }
+  function handoffText(st){
+    return { pickup:'at pickup', delivery:'at delivery', onsite:'on the day of the event' }[st.event.serviceStyle] || 'at pickup';
+  }
+  function autoPaymentLine(st){
+    const t = st.terms, d = t.deposit, r = t.refund;
+    const bal = t.balance.due === 'daysBefore' && num(t.balance.days) !== null
+      ? `${daysText(num(t.balance.days))} before the event` : handoffText(st);
+    if (d.type === 'none') return `No deposit, full payment due ${bal}`;
+    let dep;
+    if (d.type === 'percent' && num(d.value) !== null) dep = `${numText(num(d.value))}% deposit`;
+    else if (d.type === 'flat' && cents(d.value) !== null) dep = `${money(cents(d.value))} deposit`;
+    else return '';
+    dep += (d.due === 'daysBefore' && num(d.dueDays) !== null)
+      ? ` due ${daysText(num(d.dueDays))} before the event` : ' to book';
+    const cut = num(r.cutoffDays);
+    if (r.type === 'nonrefundable') dep += ' (non-refundable)';
+    else if (r.type === 'refundable') dep += cut !== null ? ` (refundable until ${daysText(cut)} before the event)` : ' (refundable)';
+    else if (r.type === 'partial' && num(r.percent) !== null)
+      dep += ` (${numText(num(r.percent))}% refundable` + (cut !== null ? ` until ${daysText(cut)} before the event)` : ')');
+    return `${dep}, balance due ${bal}`;
+  }
+
+  function termsLines(st){
+    const t = st.terms;
+    const notice = num(t.noticeDays), good = num(t.pricesGoodDays);
+    const lines = [
+      `Service style: ${String(st.wording.service || '').trim() || autoServiceLine(st) || '[pickup, delivery, or on-site, and any extra charge]'}`,
+      `Notice needed: ${notice !== null ? daysText(notice) : '[how much]'}`,
+      `Setup and supplies: ${String(st.wording.setup || '').trim() || autoSetupLine(st) || '[included or extra]'}`,
+      `Payment terms: ${String(st.wording.payment || '').trim() || autoPaymentLine(st) || '[deposit, when due, refundable or non-refundable]'}`
+    ];
+    if (num(t.finalCountDays) !== null) lines.push(`Final guest count: due ${daysText(num(t.finalCountDays))} before the event`);
+    if (num(t.cancelDays) !== null){
+      const n = num(t.cancelDays);
+      lines.push(`Cancellations: please give at least ${n} ${n === 1 ? "day's" : "days'"} notice`);
+    }
+    if (String(t.paymentMethods || '').trim()) lines.push(`Payment accepted: ${String(t.paymentMethods).trim()}`);
+    lines.push(`Prices good for: ${good !== null ? daysText(good) : '[how long]'}`);
+    if ((st.tax || {}).mode === 'note') lines.push('Sales tax: not included in the prices above');
+    return lines;
+  }
+
+  function outputOptions(st){
+    const withItems = st.options.filter(o => optionItems(o).length);
+    return withItems.length ? withItems : st.options.slice(0, 1);
+  }
+
+  function buildText(st){
+    const lines = [String(st.event.businessName || '').trim() || '[Your business name]'];
+    outputOptions(st).forEach((o, i) => {
+      if (i > 0) lines.push('');
+      lines.push(optionHeader(st, o, st.options.indexOf(o)));
+      lines.push('');
+      const oc = optionCalc(st, o);
+      const rows = oc.rows.length ? oc.rows : [{ it:blankItem(), c:itemCalc(blankItem(), num(st.event.guests)) }];
+      rows.forEach(r => { itemLines(r.it, r.c).forEach(l => lines.push(l)); lines.push(''); });
+      totalLines(st, oc).forEach(l => lines.push(l));
+    });
+    lines.push('');
+    termsLines(st).forEach(l => lines.push(l));
+    return lines.join('\n');
+  }
+
+  // ================= dates + deposit =================
+  function depositOption(st){
+    return st.options.find(o => o.id === st.terms.depositOptionId) || outputOptions(st)[0];
+  }
+  function termFacts(st, today){
+    const t = st.terms, ev = parseDate(st.event.eventDate);
+    today = today || new Date();
+    const o = depositOption(st), oc = optionCalc(st, o);
+    let dep = null;
+    if (t.deposit.type === 'percent' && num(t.deposit.value) !== null && oc.allComplete)
+      dep = Math.round(oc.total * num(t.deposit.value) / 100 + 1e-7);
+    else if (t.deposit.type === 'flat') dep = cents(t.deposit.value);
+    else if (t.deposit.type === 'none') dep = 0;
+    const f = {
+      option:o, optionTotal: oc.allComplete ? oc.total : null, deposit:dep,
+      balance: (dep !== null && oc.allComplete) ? oc.total - dep : null,
+      depositDue:null, depositDueText:'', refundCutoff:null, balanceDue:null,
+      pricesGoodUntil: num(t.pricesGoodDays) !== null ? addDays(new Date(today.getFullYear(), today.getMonth(), today.getDate()), num(t.pricesGoodDays)) : null,
+      finalCount:null
+    };
+    if (t.deposit.type && t.deposit.type !== 'none'){
+      if (t.deposit.due === 'daysBefore' && num(t.deposit.dueDays) !== null){ if (ev) f.depositDue = addDays(ev, -num(t.deposit.dueDays)); }
+      else f.depositDueText = 'when the client says yes';
+    }
+    if (ev){
+      if ((t.refund.type === 'refundable' || t.refund.type === 'partial') && num(t.refund.cutoffDays) !== null)
+        f.refundCutoff = addDays(ev, -num(t.refund.cutoffDays));
+      f.balanceDue = (t.balance.due === 'daysBefore' && num(t.balance.days) !== null) ? addDays(ev, -num(t.balance.days)) : ev;
+      if (num(t.finalCountDays) !== null) f.finalCount = addDays(ev, -num(t.finalCountDays));
+    }
+    return f;
+  }
+
+  // ================= checks (the lesson's 8 points) =================
+  function dietaryCheck(st){
+    const d = st.event.dietary, out = [];
+    const ask = [['vegetarian','Vegetarian',['V','VG']],['vegan','Vegan',['VG']],['glutenFree','Gluten-free',['GF']],['dairyFree','Dairy-free',['DF']]];
+    const g = num(st.event.guests);
+    st.options.forEach(o => {
+      const rows = optionItems(o).map(it => ({ it, c:itemCalc(it, g) }));
+      ask.forEach(([k, lbl, tags]) => {
+        const want = num(d[k]);
+        if (!want) return;
+        const hit = rows.filter(r => (r.it.tags || []).some(t => tags.includes(t)));
+        // a meal needs one dish that covers it — salad + bread isn't a vegetarian lunch
+        const dishes = hit.map(r => ({ name:String(r.it.name || '').trim() || 'unnamed dish', servings:r.c.coverage || 0 }));
+        out.push({ option:o, label:lbl, want, dishes, ok:dishes.some(x => x.servings >= want) });
+      });
+    });
+    return out;
+  }
+
+  function checks(st, text){
+    const g = num(st.event.guests);
+    const opts = outputOptions(st);
+    const res = [];
+    const add = (ok, title, detail, step) => res.push({ ok, title, detail, step });
+
+    add(!!st.event.eligibilityConfirmed, 'Eligible: AFW kitchen, policies, good standing, nothing past due',
+        st.event.eligibilityConfirmed ? 'You confirmed this in Step 1.' : 'Tick “I’m all set” on the reminder card in Step 1.', 0);
+
+    const missing = [];
+    opts.forEach(o => {
+      const its = optionItems(o);
+      if (!its.length) missing.push(`${optionLabel(o)} has no dishes yet`);
+      its.forEach(it => {
+        const need = [];
+        if (!String(it.name || '').trim()) need.push('name');
+        if (!sizeText(it)) need.push('size');
+        if (!(num(it.serves) > 0)) need.push('serves');
+        if (cents(it.pricePerPan) === null) need.push('price');
+        if (need.length) missing.push(`${itemLabel(it)}: add ${joinList(need)}`);
+      });
+    });
+    add(!missing.length, 'Every line has item, size, serves, and price', missing.join(' · ') || 'All set.', 1);
+
+    const qty = [];
+    if (!(g > 0)) qty.push('Add the guest count in Step 1');
+    opts.forEach(o => optionItems(o).forEach(it => {
+      const c = itemCalc(it, g);
+      if (c.short) qty.push(`${itemLabel(it)}: ${c.pans} ${countWord(it, c.pans)} serve ${numText(c.coverage)}, short of ${numText(c.forN)}`);
+      if (it.forWho === 'some' && !(num(it.forGuests) > 0)) qty.push(`${itemLabel(it)}: how many guests is it for?`);
+    }));
+    add(!qty.length, 'Quantities are rounded up and totals add up', qty.join(' · ') || 'Pans are rounded up and every total is added for you.', 1);
+
+    const pgOk = g > 0 && opts.every(o => optionCalc(st, o).allComplete);
+    add(pgOk, 'A per-person price is shown', pgOk ? 'Shown on every option’s Total line.' : 'Needs the guest count and every price filled in.', 1);
+
+    const al = [];
+    opts.forEach(o => optionItems(o).forEach(it => {
+      if (!(it.allergens && it.allergens.length) && !it.allergenNone) al.push(itemLabel(it));
+    }));
+    add(!al.length, 'Dietary tags and allergens are on every item',
+        al.length ? `Allergens not set: ${al.join(', ')}` : 'Every dish lists its allergens. Double-check the diet tags — the tool can’t tell a dish with no tags from one you forgot.', 1);
+
+    const tm = [];
+    if (!st.event.serviceStyle && !String(st.wording.service || '').trim()) tm.push('service style (Step 1)');
+    if (num(st.terms.noticeDays) === null) tm.push('notice needed (Step 4)');
+    if (!String(st.wording.payment || '').trim() && !autoPaymentLine(st)) tm.push('payment terms (Step 4)');
+    if (!String(st.wording.setup || '').trim() && !autoSetupLine(st)) tm.push('setup and supplies (Step 3)');
+    if (num(st.terms.pricesGoodDays) === null) tm.push('prices good for (Step 4)');
+    const del = st.extras.find(x => x.id === 'delivery');
+    if (st.event.serviceStyle === 'pickup' && del && del.status === 'extra') tm.push('you charge for delivery but picked Pickup');
+    add(!tm.length, 'Service style, notice, and payment terms are included', tm.length ? 'Still needed: ' + tm.join(', ') : 'All set.', 3);
+
+    const blanks = (text.match(/\[[^\]]*\]/g) || []);
+    add(!blanks.length, 'Plain text, ready to paste',
+        blanks.length ? `The tool always writes plain text — but ${blanks.length} [blank${blanks.length === 1 ? '' : 's'}] still need filling in.` : 'No tables or pictures — it will paste cleanly into any email.', 4);
+
+    add(!!st.sentToAfw, 'Sent to Erica or Regina before the deadline',
+        st.sentToAfw ? 'Marked as sent.' : 'Send it, then tick “I sent it” below. Watch the deadline in the referral email.', 4);
+    return res;
+  }
+  function optionLabel(o){ return (String(o.name || '').trim() || 'This option'); }
+  function itemLabel(it){ return String(it.name || '').trim() || 'Unnamed dish'; }
+
+  // ================= save / load =================
+  // Each step upgrades a file from version N to N+1. Never edit an old step.
+  const MIGRATIONS = {
+    // 1: data => { ...; data.fileVersion = 2; return data; }
+  };
+  function collectState(){
+    const out = clone(S);
+    out._tool = 'catering-proposal-builder';
+    out.fileVersion = FILE_VERSION;
+    out.savedAt = new Date().toISOString();
+    return out;
+  }
+  function deepMerge(base, add){
+    if (Array.isArray(base) || base === null || typeof base !== 'object') return add === undefined ? base : add;
+    const out = Object.assign({}, add && typeof add === 'object' ? add : {});
+    Object.keys(base).forEach(k => {
+      out[k] = (add && typeof add === 'object' && k in add) ? deepMerge(base[k], add[k]) : base[k];
+    });
+    return out;
+  }
+  function normalize(data){
+    let d = clone(data || {});
+    let v = Number(d.fileVersion) || 1;
+    while (MIGRATIONS[v]){ d = MIGRATIONS[v](d); v = Number(d.fileVersion) || v + 1; }
+    const base = blankState();
+    const st = deepMerge(base, d);
+    st.options = (Array.isArray(d.options) && d.options.length ? d.options : base.options).slice(0, 3).map(o => {
+      const opt = deepMerge(blankOption(''), o);
+      opt.id = opt.id || uid('o');
+      opt.items = (Array.isArray(o.items) && o.items.length ? o.items : [blankItem()]).map(it => {
+        const item = deepMerge(blankItem(), it);
+        item.id = it.id || uid('i');
+        item.tags = Array.isArray(it.tags) ? it.tags : [];
+        item.allergens = Array.isArray(it.allergens) ? it.allergens : [];
+        item.panCalc = deepMerge(blankPanCalc(), it.panCalc || {});
+        return item;
+      });
+      return opt;
+    });
+    // keep every preset row (in order), then any custom rows
+    const given = Array.isArray(d.extras) ? d.extras : [];
+    st.extras = EXTRA_PRESETS.map(p => {
+      const g = given.find(x => x && x.id === p.id && x.preset !== false);
+      const row = deepMerge({ id:p.id, label:p.label, preset:true, status:'', charge:blankCharge(p.charges[0]) }, g || {});
+      row.charge = deepMerge(blankCharge(p.charges[0]), (g && g.charge) || {});
+      return row;
+    }).concat(given.filter(x => x && !(x.preset !== false && EXTRA_PRESETS.some(p => p.id === x.id))).map(x => {
+      const row = deepMerge({ id:uid('x'), label:'', preset:false, status:'', charge:blankCharge('flat') }, x);
+      row.charge = deepMerge(blankCharge('flat'), x.charge || {});
+      return row;
+    }));
+    st.fileVersion = FILE_VERSION;
+    return st;
+  }
+  function hasWork(){
+    return !!(String(S.event.businessName || '').trim() || num(S.event.guests) !== null ||
+      S.options.some(o => optionItems(o).length) || S.extras.some(x => x.status));
+  }
+  function applyState(data){
+    if (!data) return;
+    S = normalize(data);
+    ui.opt = 0;
+    renderAll();
+  }
+  function applyWithConfirm(data){
+    if (hasWork() && !window.confirm('Replace what is on screen now? Save your progress first if you want to keep it.')) return false;
+    applyState(data);
+    return true;
+  }
+
+  function sampleState(){
+    const today = new Date();
+    let d = addDays(new Date(today.getFullYear(), today.getMonth(), today.getDate()), 7);
+    while (d.getDay() !== 5) d = addDays(d, 1);         // the example says Friday
+    const it = (name, size, serves, price, tags, allergens, extra) =>
+      Object.assign(blankItem(), { name, size, serves, pricePerPan:price, tags, allergens }, extra || {});
+    const classic = () => [
+      it('Beef lasagna', 'full', 10, 75, [], ['wheat','milk','eggs'], { forWho:'some', forGuests:30 }),
+      it('Vegetarian lasagna', 'full', 10, 70, ['V'], ['wheat','milk','eggs'], { forWho:'some', forGuests:10 }),
+      it('Garden salad', 'full', 15, 45, ['VG','GF'], ['sesame']),
+      it('Garlic bread', 'tray', 12, 24, ['V'], ['wheat','milk'])
+    ];
+    const st = blankState();
+    st.event = Object.assign(st.event, {
+      businessName:'Towpath Catering Co.', guests:40, eventDate:isoDate(d), readyTime:'11:30',
+      serviceStyle:'pickup', budgetPerGuest:14
+    });
+    st.event.dietary.vegetarian = 2;
+    st.options = [
+      { id:uid('o'), name:'Classic', items:classic() },
+      { id:uid('o'), name:'Plus', items:classic().concat([it('Brownies', 'tray', 20, 50, ['V'], ['wheat','milk','eggs'])]) }
+    ];
+    st.extras.find(x => x.id === 'utensils').status = 'included';
+    Object.assign(st.terms, clone(TERM_PRESETS.simple), { preset:'simple', noticeDays:3, pricesGoodDays:14, depositOptionId:st.options[0].id });
+    st.wording.service = 'Pickup at AFW, Friday by 11:30';
+    return st;
+  }
+
+  // ================= rendering =================
+  const $ = id => document.getElementById(id);
+  function getPath(obj, path){ return path.split('.').reduce((o, k) => (o == null ? o : o[k]), obj); }
+  function setPath(obj, path, val){
+    const ks = path.split('.'); const last = ks.pop();
+    const tgt = ks.reduce((o, k) => o[k], obj);
+    tgt[last] = val;
+  }
+  const pressed = b => `aria-pressed="${b ? 'true' : 'false'}"`;
+
+  function inputField(o){
+    // o: {path, label, type:'text'|'num'|'date'|'time', hint, pre, post, placeholder, req, mode, cls}
+    const v = getPath(S, o.path);
+    const id = 'f_' + o.path.replace(/\./g, '_');
+    const t = o.type === 'num' ? 'number' : (o.type || 'text');
+    const extra = o.type === 'num' ? ` inputmode="${o.mode || 'decimal'}" min="0" step="${o.step || 'any'}"` : '';
+    const input = `<input id="${id}" type="${t}" data-bind="${o.path}" data-type="${o.type === 'num' ? 'num' : 'text'}"${extra}
+      value="${esc(v ?? '')}" placeholder="${esc(o.placeholder || '')}"${o.rerender ? ' data-rerender="1"' : ''}${o.label ? '' : ` aria-label="${esc(o.aria || '')}"`}>`;
+    const body = (o.pre || o.post)
+      ? `<div class="adorn">${o.pre ? `<span class="pre">${o.pre}</span>` : ''}${input}${o.post ? `<span class="post">${o.post}</span>` : ''}</div>` : input;
+    return `<div class="field${o.cls ? ' ' + o.cls : ''}">${o.label ? `<label for="${id}">${o.label}${o.req ? ' <span class="req">*</span>' : ''}</label>` : ''}${body}${o.hint || o.hintId ? `<span class="hint"${o.hintId ? ` id="${o.hintId}"` : ''}>${o.hint || ''}</span>` : ''}</div>`;
+  }
+  function seg(path, choices, current, type){
+    return `<div class="seg" role="group">${choices.map(([v, l]) =>
+      `<button type="button" data-act="set" data-path="${path}" data-val="${esc(v)}"${type ? ` data-type="${type}"` : ''} ${pressed(String(current) === String(v))}>${l}</button>`).join('')}</div>`;
+  }
+
+  function renderNav(){
+    $('stepnav').innerHTML = STEPS.map((s, i) =>
+      `<button type="button" data-act="step" data-val="${i}"${ui.step === i ? ' aria-current="step"' : ''}><span class="n">${i + 1}</span>${s}</button>`).join('');
+    STEPS.forEach((_, i) => { $('step' + (i + 1)).hidden = ui.step !== i; });
+    $('btnPrev').style.visibility = ui.step === 0 ? 'hidden' : 'visible';
+    $('btnNext').textContent = ui.step === STEPS.length - 1 ? 'Copy proposal' : 'Next';
+  }
+
+  // ---------- step 1 ----------
+  function renderStep1(){
+    const e = S.event;
+    $('step1').innerHTML = `
+      <div class="guide-card">
+        <h2>A friendly reminder before you start</h2>
+        <ul>
+          <li>Food is prepared in the AFW kitchen</li>
+          <li>Following all agreed AFW policies and procedures</li>
+          <li>By members in good standing</li>
+          <li>With nothing past due</li>
+        </ul>
+        <button type="button" class="btn" data-act="toggle" data-path="event.eligibilityConfirmed" ${pressed(e.eligibilityConfirmed)}>${e.eligibilityConfirmed ? '✓ I’m all set' : 'I’m all set'}</button>
+      </div>
+      <div class="card">
+        <h2 id="h-step1">Event basics</h2>
+        <p class="sub">Copy these from the referral email. Only the first two are required.</p>
+        ${inputField({ path:'event.businessName', label:'Your business name', req:true, placeholder:'e.g., Towpath Catering Co.' })}
+        ${inputField({ path:'event.guests', label:'How many guests?', req:true, type:'num', mode:'numeric', step:'1', placeholder:'40' })}
+        <div class="grid2" style="margin-top:14px">
+          ${inputField({ path:'event.eventDate', label:'Event date', type:'date', hint:'Optional — lets the tool show real due dates.' })}
+          ${inputField({ path:'event.readyTime', label:'Food ready by', type:'time', hint:'Optional' })}
+        </div>
+        <div class="field"><span class="lbl">How will the food get there?</span>${seg('event.serviceStyle', STYLES, e.serviceStyle)}</div>
+        ${wordingBox('service', 'Service style')}
+        ${inputField({ path:'event.budgetPerGuest', label:'Client’s budget per guest', type:'num', pre:'$', placeholder:'14', hint:'Optional. Just for comparison — it never stops you.' })}
+        <details class="panel" data-open-key="dietary"${ui.open.dietary ? ' open' : ''}>
+          <summary>Did the client ask for special meals?</summary>
+          <div class="panel-body">
+            <p class="sub">Optional. Enter how many meals of each the client asked for, and the menu step will check your tagged dishes cover them.</p>
+            <div class="grid2">
+              ${inputField({ path:'event.dietary.vegetarian', label:'Vegetarian', type:'num', mode:'numeric', step:'1' })}
+              ${inputField({ path:'event.dietary.vegan', label:'Vegan', type:'num', mode:'numeric', step:'1' })}
+              ${inputField({ path:'event.dietary.glutenFree', label:'Gluten-free', type:'num', mode:'numeric', step:'1' })}
+              ${inputField({ path:'event.dietary.dairyFree', label:'Dairy-free', type:'num', mode:'numeric', step:'1' })}
+              ${inputField({ path:'event.dietary.other', label:'Other', type:'num', mode:'numeric', step:'1' })}
+              ${inputField({ path:'event.dietary.otherNote', label:'Other — what is it?', placeholder:'e.g., halal, nut-free' })}
+            </div>
+          </div>
+        </details>
+      </div>`;
+  }
+
+  function wordingBox(key, label){
+    return `<div class="wording">
+      <span class="lbl">In your proposal, “${label}” will read:</span>
+      <p class="auto" id="auto_${key}"></p>
+      ${inputField({ path:'wording.' + key, label:'Want to word it your own way? (optional)', placeholder:'Leave blank to use the line above' })}
+    </div>`;
+  }
+
+  // ---------- step 2 ----------
+  function renderStep2(){
+    if (ui.opt >= S.options.length) ui.opt = S.options.length - 1;
+    const oi = ui.opt, o = S.options[oi];
+    $('step2').innerHTML = `
+      <div class="card">
+        <h2 id="h-step2">Build the menu</h2>
+        <p class="sub">Offer two or three options: one that fits the client’s budget and one a step up. Each option is its own complete menu.</p>
+        <div class="opt-tabs" role="group" aria-label="Options">
+          ${S.options.map((x, i) => `<button type="button" class="chip" data-act="selOpt" data-val="${i}" ${pressed(i === oi)}>${esc(String(x.name || '').trim() || 'Option ' + (i + 1))}</button>`).join('')}
+          ${S.options.length < 3 ? `<button type="button" class="chip" data-act="addOpt">+ New option</button>` : ''}
+        </div>
+        ${inputField({ path:`options.${oi}.name`, label:'Option name', placeholder: oi === 0 ? 'e.g., Classic' : 'e.g., Plus', hint:'Short and plain — “Classic”, “Plus”, “Deluxe”.' })}
+        <div class="seg" style="margin-top:10px">
+          ${S.options.length < 3 ? `<button type="button" data-act="dupOpt">Copy this option to start a new one</button>` : ''}
+          ${S.options.length > 1 ? `<button type="button" data-act="rmOpt" class="btn-danger" style="border:none">Remove this option</button>` : ''}
+        </div>
+        <div id="items">${o.items.map((it, ii) => itemCard(oi, ii, it)).join('')}</div>
+        <button type="button" class="btn btn-dashed" style="margin-top:14px" data-act="addItem">+ Add a dish</button>
+        <div class="total-box" id="optTotal"></div>
+        <div id="budgetBox"></div>
+        <div id="dietBox"></div>
+        <p class="links">Not sure what to charge? Try the <a href="./afw-food-cost-pricing.html" target="_blank" rel="noopener">Food Cost &amp; Pricing Tool<span class="sr-only"> (opens in a new tab)</span></a>.</p>
+      </div>`;
+  }
+
+  function itemCard(oi, ii, it){
+    const p = `options.${oi}.items.${ii}`;
+    const key = it.id;
+    return `<div class="item" data-item="${it.id}">
+      <div class="item-head"><span class="item-num">Dish ${ii + 1}</span>
+        <button type="button" class="btn btn-danger" data-act="rmItem" data-val="${ii}">Remove dish</button></div>
+      ${inputField({ path:p + '.name', label:'Dish name', placeholder:'e.g., Beef lasagna' })}
+      <div class="field"><span class="lbl">Pan or tray size</span>${seg(p + '.size', SIZES, it.size)}</div>
+      ${it.size === 'other' ? inputField({ path:p + '.sizeOther', label:'What size?', placeholder:'e.g., half sheet tray', hint:'The last word is used for counting — “3 trays”.' }) : ''}
+      <div class="grid2" style="margin-top:14px">
+        ${inputField({ path:p + '.serves', label:'Serves how many?', type:'num', mode:'numeric', step:'1', placeholder:'10' })}
+        ${inputField({ path:p + '.pricePerPan', label:'Price per pan', type:'num', pre:'$', placeholder:'75' })}
+      </div>
+      ${panPanel(oi, ii, it)}
+      <div class="field"><span class="lbl">Who is this dish for?</span>
+        ${seg(p + '.forWho', [['all','Everyone'],['some','Some of the guests']], it.forWho)}
+        <span class="hint">Pick “some” when two dishes split the guests — like beef and vegetarian lasagna.</span></div>
+      ${it.forWho === 'some' ? inputField({ path:p + '.forGuests', label:'How many guests is it for?', type:'num', mode:'numeric', step:'1', placeholder:'10' }) : ''}
+      ${inputField({ path:p + '.pansOverride', label:'Pans to make', type:'num', mode:'numeric', step:'1', hint:'', hintId:'pansHint_' + key })}
+      <div class="calc-strip" id="calc_${key}"></div>
+      <div class="field"><span class="lbl">Diet tags</span>
+        <div class="seg">${TAGS.map(([t, l]) => `<button type="button" class="chip" data-act="tag" data-path="${p}.tags" data-val="${t}" ${pressed(it.tags.includes(t))}>${t} <small>${l}</small></button>`).join('')}</div>
+        <span class="hint">Only tag what you’re sure of.</span></div>
+      <div class="field"><span class="lbl">Contains (major allergens)</span>
+        <div class="seg">${ALLERGENS.map(a => `<button type="button" class="chip" data-act="allergen" data-path="${p}" data-val="${a}" ${pressed(it.allergens.includes(a))}>${a}</button>`).join('')}</div>
+        <div class="seg" style="margin-top:8px"><button type="button" class="chip none" data-act="allergenNone" data-path="${p}" ${pressed(it.allergenNone)}>None of the major allergens</button></div>
+        <span class="hint">Only tick “None” if you’re sure — remember AFW is a shared kitchen. Until you pick something, the proposal says “Contains: [fill in]”.</span></div>
+    </div>`;
+  }
+
+  function panPanel(oi, ii, it){
+    const p = `options.${oi}.items.${ii}.panCalc`;
+    const pc = it.panCalc;
+    const g = SERVING_GUIDE[num(pc.guide)];
+    const k = 'pan_' + it.id;
+    return `<details class="panel" data-open-key="${k}"${ui.open[k] ? ' open' : ''}>
+      <summary>Help me price this pan</summary>
+      <div class="panel-body">
+        <p class="sub">From the Pan Pricing Toolkit: weigh the pan, pick a serving size, add your costs and margin. A $15 kitchen scale is all you need.</p>
+        <p class="pc-step">1 · Weigh the pan</p>
+        <div class="grid2">
+          ${inputField({ path:p + '.emptyOz', label:'Empty pan (oz)', type:'num' })}
+          ${inputField({ path:p + '.fullOz', label:'Full pan (oz)', type:'num', hint:'Packed the way you’d sell it. 1 lb = 16 oz.' })}
+        </div>
+        <p class="pc-out" id="pcFood_${it.id}"></p>
+        <p class="pc-step">2 · Pick a serving size</p>
+        <div class="field"><label for="f_${p.replace(/\./g,'_')}_guide">Serving size guide</label>
+          <select id="f_${p.replace(/\./g,'_')}_guide" data-bind="${p}.guide" data-type="text" data-rerender="1">
+            <option value="">Choose a dish type…</option>
+            ${SERVING_GUIDE.map((s, i) => `<option value="${i}"${String(pc.guide) === String(i) ? ' selected' : ''}>${esc(s.type)} (${s.lo} – ${s.hi} oz)</option>`).join('')}
+          </select>
+          ${g ? `<p class="guide-note">Typical: ${g.lo} – ${g.hi} oz. ${esc(g.note)} Tap one:</p>
+            <div class="seg" style="margin-top:6px">${range(g.lo, g.hi).map(n => `<button type="button" data-act="set" data-path="${p}.servingOz" data-val="${n}" data-type="num" ${pressed(num(pc.servingOz) === n)}>${n} oz</button>`).join('')}</div>` : ''}
+          <span class="hint">Plated main? Use the bigger number. Buffet with lots of choices? The smaller one.</span>
+        </div>
+        ${inputField({ path:p + '.servingOz', label:'Serving size (oz)', type:'num' })}
+        <p class="pc-out" id="pcServ_${it.id}"></p>
+        <p class="pc-step">3 · Your costs for one pan</p>
+        <div class="grid2">
+          ${inputField({ path:p + '.ingredients', label:'Ingredients', type:'num', pre:'$' })}
+          ${inputField({ path:p + '.labor', label:'Labor', type:'num', pre:'$' })}
+          ${inputField({ path:p + '.packaging', label:'Packaging', type:'num', pre:'$' })}
+          ${inputField({ path:p + '.marginPct', label:'Margin', type:'num', post:'%', hint:'The share of the price you keep after costs.' })}
+        </div>
+        <p class="pc-out" id="pcCost_${it.id}"></p>
+        <div class="soft" id="pcUse_${it.id}"></div>
+      </div>
+    </details>`;
+  }
+  function range(lo, hi){ const a = []; for (let n = lo; n <= hi; n++) a.push(n); return a; }
+
+  // ---------- step 3 ----------
+  function renderStep3(){
+    $('step3').innerHTML = `
+      <div class="card">
+        <h2 id="h-step3">Extras and fees</h2>
+        <p class="sub">What do you charge for beyond the food? Set each one to included, extra charge, or not offered. Leave a row alone and it stays out of the proposal.</p>
+        ${S.extras.map((x, i) => extraRow(x, i)).join('')}
+        <button type="button" class="btn btn-dashed" data-act="addExtra">+ Add your own</button>
+        ${wordingBox('setup', 'Setup and supplies')}
+      </div>`;
+  }
+  function extraRow(x, i){
+    const p = `extras.${i}`;
+    const preset = x.preset && EXTRA_PRESETS.find(e => e.id === x.id);
+    const charges = preset ? preset.charges : CUSTOM_CHARGES;
+    const c = x.charge;
+    let fields = '';
+    if (x.status === 'extra'){
+      fields += `<div class="field"><span class="lbl">How do you charge?</span>${seg(p + '.charge.type', charges.map(t => [t, CHARGE_LABEL[t]]), c.type)}</div>`;
+      if (c.type === 'flat') fields += inputField({ path:p + '.charge.amount', label:'Amount', type:'num', pre:'$', placeholder:'25' });
+      if (c.type === 'perGuest') fields += inputField({ path:p + '.charge.rate', label:'Per guest', type:'num', pre:'$', placeholder:'1.25' });
+      if (c.type === 'perHour') fields += `<div class="grid2" style="margin-top:14px">
+          ${inputField({ path:p + '.charge.rate', label:'Rate per hour', type:'num', pre:'$', placeholder:'25' })}
+          ${inputField({ path:p + '.charge.hours', label:'Hours', type:'num', placeholder:'3' })}
+          ${inputField({ path:p + '.charge.staff', label:'How many staff?', type:'num', mode:'numeric', step:'1', placeholder:'1' })}
+          ${inputField({ path:p + '.charge.minHours', label:'Minimum hours (optional)', type:'num', placeholder:'3', hint:'Each person is paid for at least this many hours.' })}
+        </div>`;
+      if (c.type === 'perMile') fields += `<div class="grid2" style="margin-top:14px">
+          ${inputField({ path:p + '.charge.miles', label:'Miles you charge for', type:'num', placeholder:'12', hint:'Enter the miles as you bill them (one way or round trip — your call).' })}
+          ${inputField({ path:p + '.charge.rate', label:'Rate per mile', type:'num', pre:'$', placeholder:'1.50' })}
+        </div>`;
+      fields += `<p class="calc" id="xcalc_${i}"></p>`;
+    }
+    return `<div class="extra">
+      ${preset ? `<p class="extra-name">${esc(x.label)}</p>`
+        : `<div class="item-head"><span class="extra-name" style="margin:0">Your own extra</span><button type="button" class="btn btn-danger" data-act="rmExtra" data-val="${i}">Remove</button></div>
+           ${inputField({ path:p + '.label', aria:'Name of this extra', placeholder:'e.g., Ice and coolers' })}<div style="height:8px"></div>`}
+      ${seg(p + '.status', [['included','Included free'],['extra','Extra charge'],['none','Not offered']], x.status)}
+      ${fields}
+    </div>`;
+  }
+
+  // ---------- step 4 ----------
+  function renderStep4(){
+    const t = S.terms, d = t.deposit, r = t.refund;
+    const hand = handoffText(S);
+    $('step4').innerHTML = `
+      <div class="card">
+        <h2 id="h-step4">Your terms</h2>
+        <p class="legal"><b>These are your terms to set</b> — AFW doesn’t set them for you. This is guidance, not legal advice.</p>
+        <div class="field"><span class="lbl">Start from an example (you can change anything after)</span>
+          <div class="seg">
+            <button type="button" data-act="preset" data-val="simple" ${pressed(t.preset === 'simple')}>Example: Simple</button>
+            <button type="button" data-act="preset" data-val="flexible" ${pressed(t.preset === 'flexible')}>Example: Flexible</button>
+            <button type="button" data-act="preset" data-val="scratch" ${pressed(t.preset === 'scratch')}>Start from scratch</button>
+          </div>
+          <span class="hint">Simple: 50% deposit to book, non-refundable, balance due at pickup. Flexible: 25% deposit, refundable until 7 days before, balance due at pickup.</span>
+        </div>
+
+        <div class="term">
+          <h3>Deposit</h3>
+          <p class="think">A deposit holds the date and covers food you buy ahead. Think about how much you’d lose if they cancel after you’ve shopped. <i>Example: 50% to book.</i></p>
+          <div class="field">${seg('terms.deposit.type', [['none','No deposit'],['percent','Percent'],['flat','Flat amount']], d.type)}</div>
+          ${d.type === 'percent' ? inputField({ path:'terms.deposit.value', label:'Deposit percent', type:'num', post:'%', placeholder:'50' }) : ''}
+          ${d.type === 'flat' ? inputField({ path:'terms.deposit.value', label:'Deposit amount', type:'num', pre:'$', placeholder:'100' }) : ''}
+          ${d.type && d.type !== 'none' ? `<div class="field"><span class="lbl">When is the deposit due?</span>${seg('terms.deposit.due', [['toBook','To book (when they say yes)'],['daysBefore','Days before the event']], d.due)}</div>
+            ${d.due === 'daysBefore' ? inputField({ path:'terms.deposit.dueDays', label:'Days before the event', type:'num', mode:'numeric', step:'1', placeholder:'14' }) : ''}` : ''}
+        </div>
+
+        <div class="term">
+          <h3>Balance due</h3>
+          <p class="think">When the rest gets paid. Collecting it at handoff means you’re not chasing money afterward. <i>Example: balance due at pickup.</i></p>
+          <div class="field">${seg('terms.balance.due', [['atHandoff', cap(hand)],['daysBefore','Days before the event']], t.balance.due)}</div>
+          ${t.balance.due === 'daysBefore' ? inputField({ path:'terms.balance.days', label:'Days before the event', type:'num', mode:'numeric', step:'1', placeholder:'3' }) : ''}
+        </div>
+
+        <div class="term">
+          <h3>Refunds</h3>
+          <p class="think">What happens to the deposit if the client cancels. After what point have you already bought food or turned down other work? <i>Example: refundable until 7 days before the event.</i></p>
+          <div class="field">${seg('terms.refund.type', [['nonrefundable','Non-refundable'],['refundable','Refundable'],['partial','Partly refundable']], r.type)}</div>
+          ${r.type === 'partial' ? inputField({ path:'terms.refund.percent', label:'How much of the deposit comes back?', type:'num', post:'%', placeholder:'50' }) : ''}
+          ${r.type === 'refundable' || r.type === 'partial' ? inputField({ path:'terms.refund.cutoffDays', label:'Refundable until how many days before?', type:'num', mode:'numeric', step:'1', placeholder:'7', hint:'Leave blank for no cutoff.' }) : ''}
+        </div>
+
+        <div class="term">
+          <h3>Final guest count</h3>
+          <p class="think">The last day the client can change the number of guests. Think about when you shop and prep. <i>Example: 5 days before.</i></p>
+          ${inputField({ path:'terms.finalCountDays', label:'Days before the event (optional)', type:'num', mode:'numeric', step:'1', placeholder:'5' })}
+        </div>
+
+        <div class="term">
+          <h3>Cancellations</h3>
+          <p class="think">How much notice you ask for if the client cancels. <i>Example: 7 days’ notice.</i></p>
+          ${inputField({ path:'terms.cancelDays', label:'Days of notice (optional)', type:'num', mode:'numeric', step:'1', placeholder:'7' })}
+        </div>
+
+        <div class="term">
+          <h3>Payment accepted</h3>
+          <p class="think">List the ways you can actually take money. <i>Example: cash, card, or Venmo.</i></p>
+          ${inputField({ path:'terms.paymentMethods', label:'Ways to pay (optional)', placeholder:'e.g., cash, card, or Venmo' })}
+        </div>
+
+        <div class="term">
+          <h3>Prices good for</h3>
+          <p class="think">How long this quote holds before you’d re-check your food costs. <i>Example: 14 days.</i></p>
+          ${inputField({ path:'terms.pricesGoodDays', label:'Days', type:'num', mode:'numeric', step:'1', placeholder:'14' })}
+        </div>
+
+        <div class="term">
+          <h3>Notice needed</h3>
+          <p class="think">How much lead time you need to shop, prep, and book kitchen time. <i>Example: 3 days.</i></p>
+          ${inputField({ path:'terms.noticeDays', label:'Days', type:'num', mode:'numeric', step:'1', placeholder:'3' })}
+        </div>
+
+        <div class="term">
+          <h3>Sales tax</h3>
+          <p class="think">Collecting and paying sales tax is your responsibility, not AFW’s. Whether it applies can depend on what you sell and how it’s served — check with the Ohio Department of Taxation or a tax professional. You decide whether it shows in the proposal.</p>
+          <div class="field">${seg('tax.mode', [['none','Don’t mention it'],['line','Add a tax line to the total'],['note','Add a note: tax not included']], S.tax.mode)}</div>
+          ${S.tax.mode === 'line' ? `<div class="field">${seg('tax.type', [['rate','Use a rate (%)'],['amount','Enter an amount ($)']], S.tax.type)}</div>
+            ${S.tax.type === 'amount' ? inputField({ path:'tax.amount', label:'Tax amount', type:'num', pre:'$' })
+              : inputField({ path:'tax.rate', label:'Tax rate', type:'num', post:'%', placeholder:'6.75' }) +
+                `<div class="field"><span class="lbl">Tax the paid extras too?</span>${seg('tax.includeExtras', [['true','Yes'],['false','No, food only']], String(S.tax.includeExtras), 'bool')}</div>`}` : ''}
+        </div>
+
+        ${S.options.length > 1 ? `<div class="field"><label for="depOpt">Work out the deposit using</label>
+          <select id="depOpt" data-bind="terms.depositOptionId" data-type="text">
+            ${S.options.map((o, i) => `<option value="${o.id}"${depositOption(S) === o ? ' selected' : ''}>${esc(String(o.name || '').trim() || 'Option ' + (i + 1))}</option>`).join('')}
+          </select></div>` : ''}
+        <dl class="dates" id="termDates"></dl>
+        ${wordingBox('payment', 'Payment terms')}
+      </div>`;
+  }
+
+  // ---------- step 5 ----------
+  function renderStep5(){
+    $('step5').innerHTML = `
+      <div class="card">
+        <h2 id="h-step5">Review and send</h2>
+        <p class="sub">This is exactly what will paste into your email. Fix anything in [brackets] first.</p>
+        <pre class="preview" id="preview" tabindex="0" aria-label="Proposal preview"></pre>
+        <div class="send-row">
+          <button type="button" class="btn btn-primary" data-act="copy">Copy proposal</button>
+          <button type="button" class="btn" data-act="txt">Download as .txt</button>
+          <button type="button" class="btn" data-act="print">Print or save as PDF</button>
+        </div>
+        <div class="send-row">
+          <button type="button" class="btn" data-act="save">Save progress</button>
+          <button type="button" class="btn" data-act="load">Load progress</button>
+        </div>
+      </div>
+      <div class="card">
+        <h2>Before you send: the 8-point check</h2>
+        <p class="sub">These are reminders, not roadblocks — you can send at any time.</p>
+        <ul class="checks" id="checks"></ul>
+      </div>
+      <div class="card">
+        <h2>Send it to AFW</h2>
+        <p class="sub">Send your proposal to Erica or Regina before the deadline in the referral email. They’ll paste it into one email to the client with the other proposals.</p>
+        <div class="send-row">
+          ${AFW_CONTACTS.map(c => `<a class="btn" style="text-align:center;text-decoration:none" id="mail_${c.name}" href="mailto:${c.email}">Email ${c.name}</a>`).join('')}
+        </div>
+        <p class="hint">Opens your email app with the proposal filled in. If it gets cut off, use <b>Copy proposal</b> and paste it in instead. (${AFW_CONTACTS.map(c => c.email).join(' · ')})</p>
+        <div class="seg" style="margin-top:12px"><button type="button" data-act="toggle" data-path="sentToAfw" ${pressed(S.sentToAfw)}>${S.sentToAfw ? '✓ I sent it' : 'I sent it'}</button></div>
+        <ul class="links">
+          <li><a href="${TOOLKIT_URL}" download>Pan Pricing Toolkit (Excel workbook)</a></li>
+          <li>${MINI_LESSON_URL ? `<a href="${esc(MINI_LESSON_URL)}" target="_blank" rel="noopener">Mini-lesson: writing a catering proposal<span class="sr-only"> (opens in a new tab)</span></a>` : 'Mini-lesson: writing a catering proposal — link coming soon'}</li>
+          <li><a href="./afw-food-cost-pricing.html" target="_blank" rel="noopener">Food Cost &amp; Pricing Tool<span class="sr-only"> (opens in a new tab)</span></a></li>
+        </ul>
+      </div>`;
+  }
+
+  function renderAll(){
+    renderNav();
+    renderStep1(); renderStep2(); renderStep3(); renderStep4(); renderStep5();
+    refresh();
+  }
+
+  // ---------- live numbers (no input is rebuilt here, so typing keeps focus) ----------
+  function setText(id, s){ const n = $(id); if (n) n.textContent = s; }
+  function setHTML(id, s){ const n = $(id); if (n) n.innerHTML = s; }
+
+  function refresh(){
+    const g = num(S.event.guests);
+    const oi = ui.opt, o = S.options[oi];
+
+    // items in the option on screen
+    o.items.forEach(it => {
+      const c = itemCalc(it, g);
+      const unit = countWord(it, 2);
+      setText('pansHint_' + it.id, c.auto !== null
+        ? `Leave blank to use ${c.auto} (${numText(c.forN)} guests ÷ ${numText(c.serves)}, rounded up). Type a number to change it.`
+        : 'Worked out for you once guests and “serves” are filled in.');
+      const strip = $('calc_' + it.id);
+      if (strip){
+        const parts = [];
+        parts.push(c.pans !== null ? `<b>${c.pans} ${countWord(it, c.pans)}</b>${c.overridden ? ' (your number)' : ''}` : `<b>— ${unit}</b>`);
+        parts.push(`Line total <b>${c.line !== null ? money(c.line) : '—'}</b>`);
+        parts.push(`<b>${c.perPerson !== null ? money2(c.perPerson) : '—'}</b> per person`);
+        strip.innerHTML = parts.join(' · ') +
+          (c.short ? `<p class="warn-text">${c.pans} ${countWord(it, c.pans)} serve ${numText(c.coverage)} — that’s short of ${numText(c.forN)} guests.</p>` : '');
+        strip.classList.toggle('warn', c.short);
+      }
+      // pan pricing panel
+      const r = panCalc(it.panCalc);
+      const f2 = n => n === null ? '—' : (Math.round(n * 100) / 100).toLocaleString('en-US', { maximumFractionDigits:2 });
+      const $2 = n => n === null ? '—' : '$' + (Math.round(n * 100) / 100).toFixed(2);
+      setHTML('pcFood_' + it.id, `Food weight: <b>${r.foodWt !== null ? f2(r.foodWt) + ' oz' : '—'}</b>` +
+        (r.foodWt !== null && r.foodWt <= 0 ? ' <span class="warn-text">— the full pan should weigh more than the empty one.</span>' : ''));
+      setHTML('pcServ_' + it.id, `Servings per pan: <b>${f2(r.servings)}</b>`);
+      setHTML('pcCost_' + it.id, `Total cost <b>${$2(r.totalCost)}</b> · Cost per serving <b>${$2(r.costPerServing)}</b><br>
+        Price per serving <b>${$2(r.pricePerServing)}</b> · Price per pan <b>${$2(r.pricePerPan)}</b>` +
+        (num(it.panCalc.marginPct) !== null && num(it.panCalc.marginPct) >= 100 ? '<br><span class="warn-text">Margin has to be under 100%.</span>' : ''));
+      const use = panCalcToItem(r);
+      setHTML('pcUse_' + it.id, use
+        ? `For your proposal: <b>serves ${use.serves}</b> · <b>${money2(Math.round(use.pricePerPan * 100))} per pan</b><br>
+           <span class="hint">Servings are rounded down to whole plates. You can round the price after.</span>
+           <button type="button" class="btn btn-primary" style="margin-top:10px" data-act="usePan" data-val="${it.id}">Use these numbers</button>`
+        : 'Fill in the weights, serving size, costs, and margin to get a price per pan.');
+    });
+
+    // option total, budget, dietary
+    const oc = optionCalc(S, o);
+    const name = String(o.name || '').trim() || 'This option';
+    setHTML('optTotal', oc.rows.length
+      ? `<div class="big">${oc.allComplete ? money(oc.total) : money(oc.food) + '…'}</div>
+         <p>${esc(name)} total${oc.extras.length || S.tax.mode === 'line' ? ', all in' : ''} · ${oc.allComplete && oc.perGuest !== null ? money2(oc.perGuest) + ' per guest' : 'per guest shows once every price and the guest count are in'}</p>`
+      : `<div class="big">$0</div><p>Add a dish to see the total.</p>`);
+    const budget = cents(S.event.budgetPerGuest);
+    if (budget !== null && oc.allComplete && oc.perGuest !== null){
+      const diff = oc.perGuest - budget;
+      setHTML('budgetBox', `<div class="soft ${diff <= 0 ? 'ok' : 'warn'}">Budget check (info only): ${money2(oc.perGuest)} per guest is
+        <b>${diff === 0 ? 'right on' : money2(Math.abs(diff)) + (diff < 0 ? ' under' : ' over')}</b> the client’s ${money2(budget)} budget.${diff > 0 ? ' That’s fine for a step-up option.' : ''}</div>`);
+    } else setHTML('budgetBox', '');
+    const diet = dietaryCheck(S).filter(x => x.option === o);
+    const other = num(S.event.dietary.other);
+    setHTML('dietBox', diet.length || other ? `<div class="soft">${diet.map(x =>
+      `${x.ok ? '✓' : '⚠'} ${x.label}: ${x.want} requested. ` + (x.dishes.length
+        ? 'Tagged: ' + esc(x.dishes.map(d => `${d.name} (${numText(d.servings)} servings)`).join(', ')) + '.'
+        : 'No dishes tagged yet.')).join('<br>')}${diet.length ? '<br><span class="hint">Make sure at least one is a full meal, not just sides.</span>' : ''}
+      ${other ? `${diet.length ? '<br>' : ''}• Other: ${other}${S.event.dietary.otherNote ? ' ' + esc(S.event.dietary.otherNote) : ''} requested — check this one yourself.` : ''}</div>` : '');
+
+    // extras
+    S.extras.forEach((x, i) => {
+      if (x.status !== 'extra') return;
+      const c = extraCalc(x, g);
+      setHTML('xcalc_' + i, c.cents !== null ? `Adds <b>${money(c.cents)}</b> ${esc(c.detail)}` :
+        (x.charge.type === 'perGuest' && !(g > 0) ? 'Add the guest count in Step 1.' : 'Fill in the numbers to see the charge.'));
+    });
+
+    // wording previews
+    setText('auto_service', String(S.wording.service || '').trim() || autoServiceLine(S) || 'Pick how the food gets there.');
+    setText('auto_setup', String(S.wording.setup || '').trim() || autoSetupLine(S) || 'Set at least one row above to included or extra.');
+    setText('auto_payment', String(S.wording.payment || '').trim() || autoPaymentLine(S) || 'Pick a deposit option above.');
+
+    // term dates
+    const f = termFacts(S);
+    const rows = [];
+    const dname = String(f.option.name || '').trim() || 'this option';
+    if (f.deposit !== null && S.terms.deposit.type !== 'none')
+      rows.push(['Deposit', `${money(f.deposit)}${S.terms.deposit.type === 'percent' && f.optionTotal !== null ? ` (${numText(num(S.terms.deposit.value))}% of ${esc(dname)}’s ${money(f.optionTotal)})` : ''}` +
+        (f.depositDue ? ` — due ${niceDate(f.depositDue)}` : f.depositDueText ? ` — due ${f.depositDueText}` : '')]);
+    if (f.balance !== null && f.optionTotal !== null) rows.push(['Balance', money(f.balance) + (f.balanceDue ? ` — due ${niceDate(f.balanceDue)}` : '')]);
+    else if (f.balanceDue) rows.push(['Balance due', niceDate(f.balanceDue)]);
+    if (f.refundCutoff) rows.push(['Refund cutoff', niceDate(f.refundCutoff)]);
+    if (f.finalCount) rows.push(['Final guest count due', niceDate(f.finalCount)]);
+    if (f.pricesGoodUntil) rows.push(['Prices good until', niceDate(f.pricesGoodUntil) + ' (if you send it today)']);
+    const dates = $('termDates');
+    if (dates){
+      dates.innerHTML = rows.length ? rows.map(([k, v]) => `<dt>${k}</dt><dd>${v}</dd>`).join('') +
+        (S.event.eventDate ? '' : '<dd class="hint">Add the event date in Step 1 to see real due dates.</dd>') : '<dd class="hint">Your amounts and due dates show here as you fill in the terms.</dd>';
+    }
+
+    // review
+    const text = buildText(S);
+    setText('preview', text);
+    setText('printOut', text);
+    const ck = checks(S, text);
+    setHTML('checks', ck.map(c => `<li class="${c.ok ? 'ok' : 'warn'}"><span class="ic" aria-hidden="true">${c.ok ? '✓' : '⚠'}</span>
+      <span><b>${esc(c.title)}</b><span class="sr-only">${c.ok ? ' — done' : ' — needs attention'}</span><span class="detail">${esc(c.detail)}</span>
+      ${!c.ok && c.step !== 4 ? `<button type="button" class="btn btn-quiet" data-act="step" data-val="${c.step}">Go to ${STEPS[c.step]}</button>` : ''}</span></li>`).join(''));
+    const subj = `Catering proposal — ${String(S.event.businessName || '').trim() || 'AFW member'}`;
+    AFW_CONTACTS.forEach(c => {
+      const a = $('mail_' + c.name);
+      if (a) a.href = `mailto:${c.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(text)}`;
+    });
+
+    // bottom bar
+    const oo = optionCalc(S, o);
+    setHTML('miniSum', `<b>${esc(name)} · ${oo.allComplete ? money(oo.total) : '—'}</b>${oo.allComplete && oo.perGuest !== null ? money2(oo.perGuest) + ' per guest' : 'Step ' + (ui.step + 1) + ' of 5'}`);
+  }
+
+  // ================= events =================
+  function flash(msg, bad){
+    const n = $('flash'); n.textContent = msg; n.className = 'flash no-print' + (bad ? ' bad' : '');
+    clearTimeout(flash.t); flash.t = setTimeout(() => { n.textContent = ''; }, 5000);
+  }
+
+  document.addEventListener('input', onField);
+  document.addEventListener('change', onField);
+  function onField(e){
+    const el = e.target;
+    if (!el.dataset || !el.dataset.bind) return;
+    if (e.type === 'change' && el.tagName !== 'SELECT') return;
+    const v = el.dataset.type === 'num' ? num(el.value) : el.value;
+    setPath(S, el.dataset.bind, v);
+    if (el.dataset.rerender) renderAll();
+    else {
+      if (/^options\.\d+\.name$/.test(el.dataset.bind)){
+        const btn = document.querySelectorAll('.opt-tabs .chip')[ui.opt];
+        if (btn) btn.textContent = String(el.value).trim() || 'Option ' + (ui.opt + 1);
+      }
+      refresh();
+    }
+  }
+
+  document.addEventListener('toggle', e => {
+    const d = e.target;
+    if (d.dataset && d.dataset.openKey) ui.open[d.dataset.openKey] = d.open;
+  }, true);
+
+  function rerenderKeepFocus(el){
+    const sel = el && el.dataset ? `[data-act="${el.dataset.act}"]` +
+      (el.dataset.path ? `[data-path="${el.dataset.path}"]` : '') + (el.dataset.val !== undefined ? `[data-val="${el.dataset.val}"]` : '') : null;
+    renderAll();
+    if (sel){ const n = document.querySelector(sel); if (n) n.focus({ preventScroll:true }); }
+  }
+  function goStep(n){
+    ui.step = Math.max(0, Math.min(STEPS.length - 1, n));
+    renderNav(); refresh();
+    window.scrollTo({ top: $('stepnav').offsetTop - 8, behavior:'smooth' });
+  }
+
+  document.addEventListener('click', e => {
+    const b = e.target.closest('[data-act]');
+    if (!b) return;
+    const act = b.dataset.act, path = b.dataset.path, val = b.dataset.val;
+    const o = S.options[ui.opt];
+    switch (act){
+      case 'step': goStep(Number(val)); break;
+      case 'prev': goStep(ui.step - 1); break;
+      case 'next': if (ui.step === STEPS.length - 1) copyText(); else goStep(ui.step + 1); break;
+      case 'set': {
+        let v = val;
+        if (b.dataset.type === 'num') v = num(val);
+        if (b.dataset.type === 'bool') v = val === 'true';
+        setPath(S, path, v);
+        rerenderKeepFocus(b); break;
+      }
+      case 'toggle': setPath(S, path, !getPath(S, path)); rerenderKeepFocus(b); break;
+      case 'tag': {
+        const arr = getPath(S, path), i = arr.indexOf(val);
+        if (i >= 0) arr.splice(i, 1); else arr.push(val);
+        rerenderKeepFocus(b); break;
+      }
+      case 'allergen': {
+        const it = getPath(S, path), i = it.allergens.indexOf(val);
+        if (i >= 0) it.allergens.splice(i, 1); else { it.allergens.push(val); it.allergenNone = false; }
+        rerenderKeepFocus(b); break;
+      }
+      case 'allergenNone': {
+        const it = getPath(S, path);
+        it.allergenNone = !it.allergenNone;
+        if (it.allergenNone) it.allergens = [];
+        rerenderKeepFocus(b); break;
+      }
+      case 'selOpt': ui.opt = Number(val); rerenderKeepFocus(b); break;
+      case 'addOpt': if (S.options.length < 3){ S.options.push(blankOption('')); ui.opt = S.options.length - 1; renderAll(); } break;
+      case 'dupOpt': if (S.options.length < 3){
+        const c = clone(o); c.id = uid('o'); c.name = '';
+        c.items.forEach(it => { it.id = uid('i'); });
+        S.options.push(c); ui.opt = S.options.length - 1; renderAll();
+        flash('Copied. Name the new option and add what makes it a step up.');
+      } break;
+      case 'rmOpt':
+        if (S.options.length > 1 && window.confirm(`Remove the “${optionLabel(o)}” option and its dishes?`)){
+          S.options.splice(ui.opt, 1); ui.opt = 0; renderAll();
+        } break;
+      case 'addItem': o.items.push(blankItem()); renderAll(); break;
+      case 'rmItem': {
+        const it = o.items[Number(val)];
+        if (isBlankItem(it) || window.confirm(`Remove “${itemLabel(it)}”?`)){
+          o.items.splice(Number(val), 1);
+          if (!o.items.length) o.items.push(blankItem());
+          renderAll();
+        } break;
+      }
+      case 'usePan': {
+        const it = o.items.find(x => x.id === val);
+        const use = it && panCalcToItem(panCalc(it.panCalc));
+        if (use){ it.serves = use.serves; it.pricePerPan = use.pricePerPan; renderAll(); flash(`Filled in: serves ${use.serves}, ${money2(Math.round(use.pricePerPan * 100))} per pan.`); }
+        break;
+      }
+      case 'addExtra': S.extras.push({ id:uid('x'), label:'', preset:false, status:'', charge:blankCharge('flat') }); renderAll(); break;
+      case 'rmExtra': S.extras.splice(Number(val), 1); renderAll(); break;
+      case 'preset':
+        Object.assign(S.terms, clone(TERM_PRESETS[val]), { preset:val });
+        rerenderKeepFocus(b); break;
+      case 'sample': if (applyWithConfirm(sampleState())) flash('Sample loaded: the lesson’s Towpath Catering example. Change anything to make it yours.'); break;
+      case 'startOver': if (window.confirm('Clear everything and start a new proposal?')){ S = blankState(); ui.opt = 0; ui.step = 0; renderAll(); } break;
+      case 'save': saveJson(); break;
+      case 'load': $('fileImport').click(); break;
+      case 'copy': copyText(); break;
+      case 'txt': downloadTxt(); break;
+      case 'print': window.print(); break;
+    }
+  });
+
+  function slug(){
+    return (String(S.event.businessName || '').trim() || 'catering').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'catering';
+  }
+  function download(name, blob){
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = name;
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }
+  function saveJson(){
+    const date = new Date().toISOString().slice(0, 10);
+    download(`AFW_catering-proposal_${slug()}_${date}.json`, new Blob([JSON.stringify(collectState(), null, 2)], { type:'application/json' }));
+    flash('Progress saved to your downloads. Use “Load progress” to pick it back up.');
+  }
+  function downloadTxt(){
+    download(`${slug()}-catering-proposal.txt`, new Blob([buildText(S)], { type:'text/plain;charset=utf-8' }));
+    flash('Downloaded as a .txt file.');
+  }
+  $('fileImport').addEventListener('change', e => {
+    const f = e.target.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      let data;
+      try { data = JSON.parse(reader.result); } catch (err) { flash('That file isn’t a saved proposal (it isn’t valid JSON).', true); return; }
+      if (data && data._tool && data._tool !== 'catering-proposal-builder'){ flash('That file was saved by a different AFW tool.', true); return; }
+      if (applyWithConfirm(data)) flash('Progress loaded.');
+    };
+    reader.readAsText(f);
+    e.target.value = '';
+  });
+
+  function copyText(){
+    const text = buildText(S);
+    const fallback = () => {
+      const pre = $('preview');
+      if (ui.step !== 4) goStep(4);
+      const range = document.createRange();
+      range.selectNodeContents(pre);
+      const sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(range);
+      let ok = false;
+      try { ok = document.execCommand('copy'); } catch (err) { ok = false; }
+      flash(ok ? 'Copied! Paste it into your email.' : 'The proposal is selected — press and hold (or Ctrl/Cmd + C) to copy it.', !ok);
+    };
+    if (navigator.clipboard && window.isSecureContext){
+      navigator.clipboard.writeText(text).then(() => flash('Copied! Paste it into your email.'), fallback);
+    } else fallback();
+  }
+
+  // ================= start =================
+  renderAll();
+
+  // For tests and for staff poking around in the console.
+  window.CPB = {
+    get state(){ return S; },
+    collectState, applyState, normalize, sampleState, blankState,
+    buildText, optionCalc, itemCalc, extraCalc, panCalc, panCalcToItem, termFacts, checks, dietaryCheck,
+    autoPaymentLine, autoSetupLine, autoServiceLine, money, money2, refresh, renderAll,
+    SERVING_GUIDE, FILE_VERSION
+  };
+
+  /* ---- AFW Cloud: optional save to your account (additive only) ----
+     collectState/applyState are the same pair Save/Load progress use,
+     so a cloud save and a downloaded file hold identical data. */
+  if (typeof AFWCloud !== 'undefined' && typeof AFWCloud.mountToolBar === 'function'){
+    AFWCloud.mountToolBar('#afw-toolbar', {
+      tool:         'catering-proposal',   /* must match the key in index.html */
+      label:        'proposal',
+      serialize:    () => collectState(),
+      deserialize:  (data) => applyWithConfirm(data),
+      suggestTitle: () => [String(S.event.businessName || '').trim(), S.event.eventDate].filter(Boolean).join(' — ') || 'My catering proposal'
+    });
+  }
+})();
+</script>
+</body>
+</html>

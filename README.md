@@ -37,6 +37,7 @@ self-contained HTML file that works with or without an account.
    | `sop-builder`         | afw-sop-builder.html        | member |
    | `presell-orders`      | afw-pre-sell-order-form.html| member |
    | `first-order-sprint`  | afw-path-to-first-sales.html| member |
+   | `catering-proposal`   | afw-catering-proposal-builder.html | member |
    | `readiness-inventory` | (pending)                   | member |
 
 2. **Login is always optional, and available everywhere.** No tool gates
@@ -64,6 +65,16 @@ python3 -m http.server 8000
 
 Then open http://localhost:8000/demo-tool.html. Magic links work locally
 as long as `http://localhost:8000/**` is in Supabase's Redirect URLs.
+
+## Tests
+
+`tests/` holds jsdom smoke tests for tools with real math. jsdom isn't
+installed in this repo; from any scratch folder:
+
+```
+npm i jsdom
+NODE_PATH=$PWD/node_modules node --test /path/to/afw-tools/tests/catering-proposal-builder.test.cjs
+```
 
 ## Deploying
 
