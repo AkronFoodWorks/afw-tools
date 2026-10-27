@@ -111,7 +111,9 @@ test('Generated text matches the worked example exactly', () => {
   // and the on-screen preview / print copy carry the same text
   const full = win.CPB.buildText(st);
   assert.equal(win.document.getElementById('preview').textContent, full);
-  assert.equal(win.document.getElementById('printOut').textContent, full);
+  // print uses light styling, but carries every line of the same words
+  const printed = win.document.getElementById('printOut').textContent;
+  full.split('\n').filter(Boolean).forEach(l => assert.ok(printed.includes(l.replace(/^Dietary options:$/, 'Dietary options')), l));
 });
 
 test('Two options: one business line, options separated, terms once', () => {
@@ -402,4 +404,74 @@ test('Changing a tag in the page clears the declaration', () => {
   assert.equal(salad().tagsConfirmed, false);
   win.document.querySelector('[data-act="toggle"][data-path="options.0.items.2.tagsConfirmed"]').click();
   assert.equal(salad().tagsConfirmed, true);
+});
+
+test('Print layout: headings, bold dish lines, total and terms blocks', () => {
+  const win = load();
+  const st = sampleIn(win);
+  const html = win.CPB.printHtml(st);
+  assert.match(html, /^<h1>Towpath Catering Co\.<\/h1><h2>Classic option — 40 guests<\/h2>/);
+  assert.ok(html.includes('<div class="p-dish"><b>Beef lasagna, full pan — serves 10 — $75</b><br>3 pans = $225 · Contains: wheat, milk, eggs</div>'));
+  assert.ok(html.includes('<p class="p-grand"><b>Total:</b> $526 ($13.15 per guest)</p>'));
+  assert.ok(html.includes('<div class="p-terms"><p><b>Service style:</b> Pickup at AFW, Friday by 11:30</p>'));
+  assert.equal((html.match(/<h2>/g) || []).length, 2);
+  assert.ok(!/<table|<img/.test(html));
+});
+
+test('Checks: red for must-fix, softer for reminders', () => {
+  const win = load();
+  const st = sampleIn(win);
+  const lv = () => Object.fromEntries(win.CPB.checks(st, win.CPB.buildText(st)).map(c => [c.title.split(' ')[0].replace(':', ''), c.level]));
+  // the finished sample: only the two reminders are left
+  let l = lv();
+  assert.equal(l.Eligible, 'light');
+  assert.equal(l.Sent, 'light');
+  assert.equal(Object.values(l).filter(x => x === 'strong').length, 0);
+  // delivery charged on a pickup → must fix
+  const del = st.extras.find(x => x.id === 'delivery');
+  del.status = 'extra'; Object.assign(del.charge, { type:'flat', amount:20 });
+  assert.equal(lv().Service, 'strong');
+  del.status = '';
+  // missing pan price → must fix, and points at that price field
+  st.options[0].items[1].pricePerPan = null;
+  const c2 = win.CPB.checks(st, win.CPB.buildText(st)).find(c => c.title.startsWith('Every line'));
+  assert.equal(c2.level, 'strong');
+  assert.equal(c2.issues[0].sel, '[data-bind="options.0.items.1.pricePerPan"]');
+  // special meals not covered is only worth a look
+  st.options[0].items[1].pricePerPan = 70;
+  st.event.dietary.vegan = 50;
+  assert.equal(lv().Dietary, 'light');
+});
+
+test('Go to… outlines the field in red, and the call-out clears when fixed', () => {
+  const win = load();
+  sampleIn(win);
+  const doc = win.document;
+  win.CPB.state.options[0].items[1].pricePerPan = null;
+  win.CPB.renderAll();
+  assert.equal(doc.querySelectorAll('.needs-fix').length, 0);      // nothing red until asked
+  const k = win.CPB.checks(win.CPB.state, win.CPB.buildText(win.CPB.state)).findIndex(c => c.title.startsWith('Every line'));
+  doc.querySelector(`[data-act="goFix"][data-val="${k}"]`).click();
+  const price = doc.querySelector('[data-bind="options.0.items.1.pricePerPan"]');
+  const box = price.closest('.field');
+  assert.ok(box.classList.contains('needs-fix'));
+  assert.match(box.querySelector('.fix-msg').textContent, /Add a price/);
+  assert.equal(doc.getElementById('step2').hidden, false);
+  price.value = '70';
+  price.dispatchEvent(new win.Event('input', { bubbles:true }));
+  assert.ok(!box.classList.contains('needs-fix'));
+  assert.equal(box.querySelector('.fix-msg'), null);
+});
+
+test('A problem in another package marks its tab', () => {
+  const win = load();
+  sampleIn(win);
+  const doc = win.document;
+  win.CPB.state.options[1].items[4].pricePerPan = null;           // Plus brownies
+  win.CPB.renderAll();
+  const k = win.CPB.checks(win.CPB.state, win.CPB.buildText(win.CPB.state)).findIndex(c => c.title.startsWith('Every line'));
+  doc.querySelector(`[data-act="goFix"][data-val="${k}"]`).click();
+  assert.ok(doc.querySelector('[data-bind="options.1.items.4.pricePerPan"]').closest('.field').classList.contains('needs-fix'));
+  doc.querySelector('.opt-tabs [data-val="0"]').click();          // switch to Classic
+  assert.ok(doc.querySelector('.opt-tabs [data-val="1"]').classList.contains('has-fix'));
 });
