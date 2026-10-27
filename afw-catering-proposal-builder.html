@@ -561,7 +561,7 @@
       fileVersion:FILE_VERSION,
       savedAt:null,
       event:{
-        businessName:'', guests:null, eventDate:'', readyTime:'', serviceStyle:'',
+        eventTitle:'', businessName:'', guests:null, eventDate:'', readyTime:'', serviceStyle:'',
         budgetPerGuest:null, eligibilityConfirmed:false,
         dietary:{ vegetarian:null, vegan:null, glutenFree:null, dairyFree:null, other:null, otherNote:'' }
       },
@@ -728,9 +728,17 @@
     const l2 = `${pans} = ${line}` + (tags ? ` · ${tags}` : '') + ` · Contains: ${allergenText(it)}`;
     return [l1, l2];
   }
+  // Package names are optional. Unnamed: the only package prints as "Menu",
+  // two or three print as "Option 1/2/3" (tabs say "Package 1/2/3").
+  // Named: "<name> option", as the lesson teaches ("Classic option").
+  function pkgName(st, o){
+    const i = st.options.indexOf(o);
+    return String(o.name || '').trim() || (st.options.length > 1 ? 'Package ' + (i + 1) : 'Your menu');
+  }
   function optionHeader(st, o, idx){
-    let name = String(o.name || '').trim() || '[Package name]';
-    if (!/\boption$/i.test(name)) name += ' option';
+    let name = String(o.name || '').trim();
+    if (!name) name = st.options.length > 1 ? `Option ${idx + 1}` : 'Menu';
+    else if (!/\boption$/i.test(name)) name += ' option';
     const g = num(st.event.guests);
     return `${name} — ${g > 0 ? g + ' ' + plural(g,'guest') : '[number] guests'}`;
   }
@@ -886,6 +894,13 @@
     return out.join('');
   }
 
+  // The email subject AFW routes on: the event title comes first.
+  function subjectLine(st){
+    const t = String(st.event.eventTitle || '').trim() || '[Event title]';
+    const b = String(st.event.businessName || '').trim();
+    return `${t} — catering proposal` + (b ? ` from ${b}` : '');
+  }
+
   // ================= dates + deposit =================
   function depositOption(st){
     return st.options.find(o => o.id === st.terms.depositOptionId) || outputOptions(st)[0];
@@ -965,8 +980,6 @@
     const missing = [], i2 = [];
     opts.forEach(o => {
       const its = optionItems(o);
-      if (st.options.length > 1 && !String(o.name || '').trim())
-        i2.push(iss('strong', 1, `[data-bind="options.${oi(o)}.name"]`, 'Give this package a short name.', oi(o)));
       if (!its.length){
         missing.push(`${optionLabel(o)} has no dishes yet`);
         i2.push(iss('strong', 1, '[data-act="addItem"]', 'Add at least one dish.', oi(o)));
@@ -985,7 +998,7 @@
         if (need.length) missing.push(`${itemLabel(it)}: add ${joinList(need)}`);
       });
     });
-    add('Every line has item, size, serves, and price', i2, 'All set.', missing.join(' · ') || 'Name each package.', 1);
+    add('Every line has item, size, serves, and price', i2, 'All set.', missing.join(' · '), 1);
 
     // 3
     const qty = [], i3 = [];
@@ -1065,12 +1078,16 @@
         blanks.length ? 'strong' : 'ok');
 
     // 8 — a reminder
-    add('Sent to Erica or Regina before the deadline',
-        st.sentToAfw ? [] : [iss('light', 4, '[data-path="sentToAfw"]', 'Tick this once you’ve sent it.')],
-        'Marked as sent.', 'Send it, then tick “I sent it” below. Watch the deadline in the referral email.', 4);
+    const i8 = [];
+    if (!String(st.event.eventTitle || '').trim())
+      i8.push(iss('strong', 0, '[data-bind="event.eventTitle"]', 'Add the event title from the referral email, so AFW knows which request this answers.'));
+    if (!st.sentToAfw) i8.push(iss('light', 4, '[data-path="sentToAfw"]', 'Tick this once you’ve sent it.'));
+    add('Sent to Erica or Regina before the deadline', i8, 'Marked as sent.',
+        [String(st.event.eventTitle || '').trim() ? '' : 'Add the event title (Step 1) — it goes in your subject line so AFW can route it.',
+         st.sentToAfw ? '' : 'Send it, then tick “I sent it” below. Watch the deadline in the referral email.'].filter(Boolean).join(' '), 4);
     return res;
   }
-  function optionLabel(o){ return (String(o.name || '').trim() || 'This package'); }
+  function optionLabel(o){ return pkgName(S, o); }
   function itemLabel(it){ return String(it.name || '').trim() || 'Unnamed dish'; }
 
   // ================= save / load =================
@@ -1157,7 +1174,7 @@
     ];
     const st = blankState();
     st.event = Object.assign(st.event, {
-      businessName:'Towpath Catering Co.', guests:40, eventDate:isoDate(d), readyTime:'11:30',
+      eventTitle:'Office lunch for 40', businessName:'Towpath Catering Co.', guests:40, eventDate:isoDate(d), readyTime:'11:30',
       serviceStyle:'pickup', budgetPerGuest:14
     });
     st.event.dietary.vegetarian = 2;
@@ -1222,7 +1239,8 @@
       </div>
       <div class="card">
         <h2 id="h-step1">Event basics</h2>
-        <p class="sub">Copy these from the referral email. Only the first two are required.</p>
+        <p class="sub">Copy these from the referral email. Only the first three are required.</p>
+        ${inputField({ path:'event.eventTitle', label:'Event title (from the referral email)', req:true, placeholder:'e.g., Dave’s Birthday', hint:'It goes first in your email’s subject line, so Erica and Regina know which request you’re answering.' })}
         ${inputField({ path:'event.businessName', label:'Your business name', req:true, placeholder:'e.g., Towpath Catering Co.' })}
         ${inputField({ path:'event.guests', label:'How many guests?', req:true, type:'num', mode:'numeric', step:'1', placeholder:'40' })}
         <div class="grid2" style="margin-top:14px">
@@ -1266,10 +1284,11 @@
         <h2 id="h-step2">Build your menu</h2>
         <p class="sub">A <b>package</b> is one complete menu for this event: the dishes, sizes, and prices. Start with one. You can add a second or third package so the client can choose — like one that fits their budget and one with a little extra.</p>
         ${S.options.length > 1 ? `<div class="opt-tabs" role="group" aria-label="Your packages">
-          ${S.options.map((x, i) => `<button type="button" class="chip" data-act="selOpt" data-val="${i}" ${pressed(i === oi)}>${esc(String(x.name || '').trim() || 'Package ' + (i + 1))}</button>`).join('')}
+          ${S.options.map((x, i) => `<button type="button" class="chip" data-act="selOpt" data-val="${i}" ${pressed(i === oi)}>${esc(String(x.name || '').trim() || pkgName(S, x))}</button>`).join('')}
         </div>
         <p class="hint" style="margin:-6px 0 12px">Tap a package to edit it.</p>` : ''}
-        ${inputField({ path:`options.${oi}.name`, label:'Give this package a short name', placeholder: oi === 0 ? 'e.g., Classic' : 'e.g., Plus', hint:'The client sees it as “Classic option — 40 guests”. Keep it to a word or two: Classic, Plus, Deluxe.' })}
+        ${S.options.length > 1 || String(o.name || '').trim() ? inputField({ path:`options.${oi}.name`, label:`Name this package (optional)`, placeholder: oi === 0 ? 'e.g., Classic' : 'e.g., Plus',
+            hint:`Leave it blank and the client sees “Option ${oi + 1} — ${num(S.event.guests) > 0 ? num(S.event.guests) : '40'} guests”. A name like Classic or Plus helps them compare.` }) : ''}
         ${S.options.length > 1 ? `<div class="seg" style="margin-top:10px"><button type="button" data-act="rmOpt" class="btn-danger" style="border:none">Remove this package</button></div>` : ''}
         <div id="items">${o.items.map((it, ii) => itemCard(oi, ii, it)).join('')}</div>
         <button type="button" class="btn btn-dashed" style="margin-top:14px" data-act="addItem">+ Add a dish</button>
@@ -1489,7 +1508,7 @@
 
         ${S.options.length > 1 ? `<div class="field"><label for="depOpt">Figure the deposit from which package?</label>
           <select id="depOpt" data-bind="terms.depositOptionId" data-type="text">
-            ${S.options.map((o, i) => `<option value="${o.id}"${depositOption(S) === o ? ' selected' : ''}>${esc(String(o.name || '').trim() || 'Package ' + (i + 1))}</option>`).join('')}
+            ${S.options.map((o, i) => `<option value="${o.id}"${depositOption(S) === o ? ' selected' : ''}>${esc(pkgName(S, o))}</option>`).join('')}
           </select></div>` : ''}
         <dl class="dates" id="termDates"></dl>
         ${wordingBox('payment', 'Payment terms')}
@@ -1522,6 +1541,9 @@
       <div class="card">
         <h2>Send it to AFW</h2>
         <p class="sub">Send your proposal to Erica or Regina before the deadline in the referral email. They’ll paste it into one email to the client with the other proposals.</p>
+        <div class="wording" style="margin-bottom:14px"><span class="lbl">Use this subject line:</span>
+          <p class="auto" id="subjectOut"></p>
+          <button type="button" class="btn btn-quiet" style="margin-top:8px" data-act="copySubject">Copy subject line</button></div>
         <div class="send-row">
           ${AFW_CONTACTS.map(c => `<a class="btn" style="text-align:center;text-decoration:none" id="mail_${c.name}" href="mailto:${c.email}">Email ${c.name}</a>`).join('')}
         </div>
@@ -1590,7 +1612,7 @@
 
     // option total, budget, dietary
     const oc = optionCalc(S, o);
-    const name = String(o.name || '').trim() || 'This package';
+    const name = pkgName(S, o);
     setHTML('optTotal', oc.rows.length
       ? `<div class="big">${oc.allComplete ? money(oc.total) : money(oc.food) + '…'}</div>
          <p>${esc(name)} total${oc.extras.length || S.tax.mode === 'line' ? ', all in' : ''} · ${oc.allComplete && oc.perGuest !== null ? money2(oc.perGuest) + ' per guest' : 'per guest shows once every price and the guest count are in'}</p>`
@@ -1625,7 +1647,7 @@
     // term dates
     const f = termFacts(S);
     const rows = [];
-    const dname = String(f.option.name || '').trim() || 'this package';
+    const dname = pkgName(S, f.option);
     if (f.deposit !== null && S.terms.deposit.type !== 'none')
       rows.push(['Deposit', `${money(f.deposit)}${S.terms.deposit.type === 'percent' && f.optionTotal !== null ? ` (${numText(num(S.terms.deposit.value))}% of ${esc(dname)}’s ${money(f.optionTotal)})` : ''}` +
         (f.depositDue ? ` — due ${niceDate(f.depositDue)}` : f.depositDueText ? ` — due ${f.depositDueText}` : '')]);
@@ -1655,7 +1677,8 @@
       <span>${c.level === 'strong' ? '<span class="lvl">Needs fixing</span>' : c.level === 'light' ? '<span class="lvl">Worth a look</span>' : ''}<b>${esc(c.title)}</b><span class="sr-only">${TAG[c.level]}</span><span class="detail">${esc(c.detail)}</span>
       ${!c.ok && (c.step !== 4 || c.issues.length) ? `<button type="button" class="btn ${c.level === 'strong' ? 'btn-fix' : 'btn-quiet'}" data-act="goFix" data-val="${k}">${c.step === 4 ? 'Show me' : 'Go to ' + STEPS[c.step]}</button>` : ''}</span></li>`).join(''));
     applyFixes(ck);
-    const subj = `Catering proposal — ${String(S.event.businessName || '').trim() || 'AFW member'}`;
+    const subj = subjectLine(S);
+    setText('subjectOut', subj);
     AFW_CONTACTS.forEach(c => {
       const a = $('mail_' + c.name);
       if (a) a.href = `mailto:${c.email}?subject=${encodeURIComponent(subj)}&body=${encodeURIComponent(text)}`;
@@ -1684,7 +1707,7 @@
     else {
       if (/^options\.\d+\.name$/.test(el.dataset.bind)){
         const btn = document.querySelectorAll('.opt-tabs .chip')[ui.opt];
-        if (btn) btn.textContent = String(el.value).trim() || 'Package ' + (ui.opt + 1);
+        if (btn) btn.textContent = pkgName(S, S.options[ui.opt]);
       }
       refresh();
     }
@@ -1794,7 +1817,7 @@
         const c = clone(o); c.id = uid('o'); c.name = '';
         c.items.forEach(it => { it.id = uid('i'); });
         S.options.push(c); ui.opt = S.options.length - 1; renderAll();
-        flash('Copied. Give the new package a name and add what makes it a step up.');
+        flash('Copied as a new package. Add what makes it a step up — and name it if you like.');
       } break;
       case 'rmOpt':
         if (S.options.length > 1 && window.confirm(`Remove the “${optionLabel(o)}” package and its dishes?`)){
@@ -1825,13 +1848,20 @@
       case 'save': saveJson(); break;
       case 'load': $('fileImport').click(); break;
       case 'copy': copyText(); break;
+      case 'copySubject': {
+        const t = subjectLine(S);
+        if (navigator.clipboard && window.isSecureContext) navigator.clipboard.writeText(t).then(() => flash('Subject line copied.'), () => flash('Select the subject line and copy it.', true));
+        else flash('Select the subject line and copy it.', true);
+        break;
+      }
       case 'txt': downloadTxt(); break;
       case 'print': window.print(); break;
     }
   });
 
   function slug(){
-    return (String(S.event.businessName || '').trim() || 'catering').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'catering';
+    const base = [S.event.eventTitle, S.event.businessName].map(x => String(x || '').trim()).filter(Boolean).join(' ') || 'catering';
+    return base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '') || 'catering';
   }
   function download(name, blob){
     const a = document.createElement('a');
@@ -1887,7 +1917,7 @@
   window.CPB = {
     get state(){ return S; },
     collectState, applyState, normalize, sampleState, blankState,
-    buildText, printHtml, dietaryLines, optionCalc, itemCalc, extraCalc, panCalc, panCalcToItem, termFacts, checks, dietaryCheck,
+    buildText, printHtml, subjectLine, pkgName, dietaryLines, optionCalc, itemCalc, extraCalc, panCalc, panCalcToItem, termFacts, checks, dietaryCheck,
     autoPaymentLine, autoSetupLine, autoServiceLine, money, money2, refresh, renderAll,
     SERVING_GUIDE, FILE_VERSION
   };
@@ -1901,7 +1931,7 @@
       label:        'proposal',
       serialize:    () => collectState(),
       deserialize:  (data) => applyWithConfirm(data),
-      suggestTitle: () => [String(S.event.businessName || '').trim(), S.event.eventDate].filter(Boolean).join(' — ') || 'My catering proposal'
+      suggestTitle: () => [String(S.event.eventTitle || '').trim(), String(S.event.businessName || '').trim()].filter(Boolean).join(' — ') || 'My catering proposal'
     });
   }
 })();
