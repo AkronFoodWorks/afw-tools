@@ -365,9 +365,9 @@
   <div id="afw-toolbar" class="no-print" style="margin:16px 0 0"></div>
 
   <div class="toolbar no-print">
-    <button type="button" class="btn" data-act="sample">Load sample</button>
-    <button type="button" class="btn" data-act="save">Save progress</button>
-    <button type="button" class="btn" data-act="load">Load progress</button>
+    <button type="button" class="btn" data-act="sample">See a finished example</button>
+    <button type="button" class="btn" data-act="save">Save to a file</button>
+    <button type="button" class="btn" data-act="load">Open a saved file</button>
     <button type="button" class="btn btn-quiet" data-act="startOver">Start over</button>
     <input type="file" id="fileImport" accept=".json,application/json" hidden>
   </div>
@@ -1170,21 +1170,21 @@
       <div class="field"><span class="lbl">Pan or tray size</span>${seg(p + '.size', SIZES, it.size)}</div>
       ${it.size === 'other' ? inputField({ path:p + '.sizeOther', label:'What size?', placeholder:'e.g., half sheet tray', hint:'The last word is used for counting — “3 trays”.' }) : ''}
       <div class="grid2" style="margin-top:14px">
-        ${inputField({ path:p + '.serves', label:'Serves how many?', type:'num', mode:'numeric', step:'1', placeholder:'10' })}
-        ${inputField({ path:p + '.pricePerPan', label:'Price per pan', type:'num', pre:'$', placeholder:'75' })}
+        ${inputField({ path:p + '.serves', label:`How many people does one ${countWord(it, 1)} serve?`, type:'num', mode:'numeric', step:'1', placeholder:'10', hint:'Count full meal portions, not samples.' })}
+        ${inputField({ path:p + '.pricePerPan', label:`Price per ${countWord(it, 1)}`, type:'num', pre:'$', placeholder:'75' })}
       </div>
       ${panPanel(oi, ii, it)}
       <div class="field"><span class="lbl">Who is this dish for?</span>
         ${seg(p + '.forWho', [['all','Everyone'],['some','Some of the guests']], it.forWho)}
         <span class="hint">Pick “some” when two dishes split the guests — like beef and vegetarian lasagna.</span></div>
       ${it.forWho === 'some' ? inputField({ path:p + '.forGuests', label:'How many guests is it for?', type:'num', mode:'numeric', step:'1', placeholder:'10' }) : ''}
-      ${inputField({ path:p + '.pansOverride', label:'Pans to make', type:'num', mode:'numeric', step:'1', hint:'', hintId:'pansHint_' + key })}
+      ${inputField({ path:p + '.pansOverride', label:`${cap(countWord(it, 2))} to make`, type:'num', mode:'numeric', step:'1', hint:'', hintId:'pansHint_' + key })}
       <div class="calc-strip" id="calc_${key}"></div>
-      <div class="field"><span class="lbl">Diet tags</span>
+      <div class="field"><span class="lbl">Is it vegetarian, vegan, gluten-free, or dairy-free?</span>
         <div class="seg">${TAGS.map(([t, l]) => `<button type="button" class="chip" data-act="tag" data-path="${p}.tags" data-val="${t}" ${pressed(it.tags.includes(t))}>${t} <small>${l}</small></button>`).join('')}</div>
         <span class="hint">Only tag what you’re sure of. AFW asks you to declare every dish you tag — tagged dishes are also listed under “Dietary options” in your proposal.</span>
         ${it.tags.length ? `<div class="seg" style="margin-top:8px"><button type="button" class="chip" data-act="toggle" data-path="${p}.tagsConfirmed" ${pressed(it.tagsConfirmed)}>${it.tagsConfirmed ? '✓ Declared: ' : 'I declare '}${esc(tagText(it.tags) || it.tags.join(', '))} — I’ve checked the ingredients and how it’s made</button></div>` : ''}</div>
-      <div class="field"><span class="lbl">Contains (major allergens)</span>
+      <div class="field"><span class="lbl">Which major allergens does it contain?</span>
         <div class="seg">${ALLERGENS.map(a => `<button type="button" class="chip" data-act="allergen" data-path="${p}" data-val="${a}" ${pressed(it.allergens.includes(a))}>${a}</button>`).join('')}</div>
         <div class="seg" style="margin-top:8px"><button type="button" class="chip none" data-act="allergenNone" data-path="${p}" ${pressed(it.allergenNone)}>None of the major allergens</button></div>
         <span class="hint">Only tick “None” if you’re sure — remember AFW is a shared kitchen. Until you pick something, the proposal says “Contains: [fill in]”.</span></div>
@@ -1197,7 +1197,7 @@
     const g = SERVING_GUIDE[num(pc.guide)];
     const k = 'pan_' + it.id;
     return `<details class="panel" data-open-key="${k}"${ui.open[k] ? ' open' : ''}>
-      <summary>Help me price this pan</summary>
+      <summary>Help me price this ${countWord(it, 1)}</summary>
       <div class="panel-body">
         <p class="sub">From the Pan Pricing Toolkit: weigh the pan, pick a serving size, add your costs and margin. A $15 kitchen scale is all you need.</p>
         <p class="pc-step">1 · Weigh the pan</p>
@@ -1220,10 +1220,10 @@
         <p class="pc-out" id="pcServ_${it.id}"></p>
         <p class="pc-step">3 · Your costs for one pan</p>
         <div class="grid2">
-          ${inputField({ path:p + '.ingredients', label:'Ingredients', type:'num', pre:'$' })}
-          ${inputField({ path:p + '.labor', label:'Labor', type:'num', pre:'$' })}
-          ${inputField({ path:p + '.packaging', label:'Packaging', type:'num', pre:'$' })}
-          ${inputField({ path:p + '.marginPct', label:'Margin', type:'num', post:'%', hint:'The share of the price you keep after costs.' })}
+          ${inputField({ path:p + '.ingredients', label:'Ingredients for this pan', type:'num', pre:'$' })}
+          ${inputField({ path:p + '.labor', label:'Labor for this pan', type:'num', pre:'$', hint:'What you pay yourself or a helper to make it.' })}
+          ${inputField({ path:p + '.packaging', label:'Packaging for this pan', type:'num', pre:'$', hint:'Foil pan, lid, label.' })}
+          ${inputField({ path:p + '.marginPct', label:'Margin you want', type:'num', post:'%', hint:'The share of the price you keep after costs. At 40%, a $100 pan leaves you $40.' })}
         </div>
         <p class="pc-out" id="pcCost_${it.id}"></p>
         <div class="soft" id="pcUse_${it.id}"></div>
@@ -1297,9 +1297,9 @@
         </div>
 
         <div class="term">
-          <h3>Deposit</h3>
+          <h3>Do you take a deposit?</h3>
           <p class="think">A deposit holds the date and covers food you buy ahead. Think about how much you’d lose if they cancel after you’ve shopped. <i>Example: 50% to book.</i></p>
-          <div class="field">${seg('terms.deposit.type', [['none','No deposit'],['percent','Percent'],['flat','Flat amount']], d.type)}</div>
+          <div class="field">${seg('terms.deposit.type', [['none','No deposit'],['percent','Percent of the total'],['flat','Flat amount']], d.type)}</div>
           ${d.type === 'percent' ? inputField({ path:'terms.deposit.value', label:'Deposit percent', type:'num', post:'%', placeholder:'50' }) : ''}
           ${d.type === 'flat' ? inputField({ path:'terms.deposit.value', label:'Deposit amount', type:'num', pre:'$', placeholder:'100' }) : ''}
           ${d.type && d.type !== 'none' ? `<div class="field"><span class="lbl">When is the deposit due?</span>${seg('terms.deposit.due', [['toBook','To book (when they say yes)'],['daysBefore','Days before the event']], d.due)}</div>
@@ -1307,46 +1307,46 @@
         </div>
 
         <div class="term">
-          <h3>Balance due</h3>
-          <p class="think">When the rest gets paid. Collecting it at handoff means you’re not chasing money afterward. <i>Example: balance due at pickup.</i></p>
+          <h3>When is the rest paid?</h3>
+          <p class="think">Collecting it at handoff means you’re not chasing money afterward. <i>Example: balance due at pickup.</i></p>
           <div class="field">${seg('terms.balance.due', [['atHandoff', cap(hand)],['daysBefore','Days before the event']], t.balance.due)}</div>
           ${t.balance.due === 'daysBefore' ? inputField({ path:'terms.balance.days', label:'Days before the event', type:'num', mode:'numeric', step:'1', placeholder:'3' }) : ''}
         </div>
 
         <div class="term">
-          <h3>Refunds</h3>
-          <p class="think">What happens to the deposit if the client cancels. After what point have you already bought food or turned down other work? <i>Example: refundable until 7 days before the event.</i></p>
+          <h3>If they cancel, do they get the deposit back?</h3>
+          <p class="think">Think about when you’ve already bought food or turned down other work. <i>Example: refundable until 7 days before the event.</i></p>
           <div class="field">${seg('terms.refund.type', [['nonrefundable','Non-refundable'],['refundable','Refundable'],['partial','Partly refundable']], r.type)}</div>
           ${r.type === 'partial' ? inputField({ path:'terms.refund.percent', label:'How much of the deposit comes back?', type:'num', post:'%', placeholder:'50' }) : ''}
           ${r.type === 'refundable' || r.type === 'partial' ? inputField({ path:'terms.refund.cutoffDays', label:'Refundable until how many days before?', type:'num', mode:'numeric', step:'1', placeholder:'7', hint:'Leave blank for no cutoff.' }) : ''}
         </div>
 
         <div class="term">
-          <h3>Final guest count</h3>
+          <h3>When do you need the final guest count?</h3>
           <p class="think">The last day the client can change the number of guests. Think about when you shop and prep. <i>Example: 5 days before.</i></p>
           ${inputField({ path:'terms.finalCountDays', label:'Days before the event (optional)', type:'num', mode:'numeric', step:'1', placeholder:'5' })}
         </div>
 
         <div class="term">
-          <h3>Cancellations</h3>
+          <h3>How much notice to cancel?</h3>
           <p class="think">How much notice you ask for if the client cancels. <i>Example: 7 days’ notice.</i></p>
           ${inputField({ path:'terms.cancelDays', label:'Days of notice (optional)', type:'num', mode:'numeric', step:'1', placeholder:'7' })}
         </div>
 
         <div class="term">
-          <h3>Payment accepted</h3>
+          <h3>How can they pay you?</h3>
           <p class="think">List the ways you can actually take money. <i>Example: cash, card, or Venmo.</i></p>
           ${inputField({ path:'terms.paymentMethods', label:'Ways to pay (optional)', placeholder:'e.g., cash, card, or Venmo' })}
         </div>
 
         <div class="term">
-          <h3>Prices good for</h3>
+          <h3>How long are these prices good for?</h3>
           <p class="think">How long this quote holds before you’d re-check your food costs. <i>Example: 14 days.</i></p>
           ${inputField({ path:'terms.pricesGoodDays', label:'Days', type:'num', mode:'numeric', step:'1', placeholder:'14' })}
         </div>
 
         <div class="term">
-          <h3>Notice needed</h3>
+          <h3>How much notice do you need?</h3>
           <p class="think">How much lead time you need to shop, prep, and book kitchen time. <i>Example: 3 days.</i></p>
           ${inputField({ path:'terms.noticeDays', label:'Days', type:'num', mode:'numeric', step:'1', placeholder:'3' })}
         </div>
@@ -1383,8 +1383,8 @@
           <button type="button" class="btn" data-act="print">Print or save as PDF</button>
         </div>
         <div class="send-row">
-          <button type="button" class="btn" data-act="save">Save progress</button>
-          <button type="button" class="btn" data-act="load">Load progress</button>
+          <button type="button" class="btn" data-act="save">Save to a file</button>
+          <button type="button" class="btn" data-act="load">Open a saved file</button>
         </div>
       </div>
       <div class="card">
@@ -1658,7 +1658,7 @@
   function saveJson(){
     const date = new Date().toISOString().slice(0, 10);
     download(`AFW_catering-proposal_${slug()}_${date}.json`, new Blob([JSON.stringify(collectState(), null, 2)], { type:'application/json' }));
-    flash('Progress saved to your downloads. Use “Load progress” to pick it back up.');
+    flash('Saved to your downloads. Use “Open a saved file” to pick up where you left off.');
   }
   function downloadTxt(){
     download(`${slug()}-catering-proposal.txt`, new Blob([buildText(S)], { type:'text/plain;charset=utf-8' }));
@@ -1672,7 +1672,7 @@
       let data;
       try { data = JSON.parse(reader.result); } catch (err) { flash('That file isn’t a saved proposal (it isn’t valid JSON).', true); return; }
       if (data && data._tool && data._tool !== 'catering-proposal-builder'){ flash('That file was saved by a different AFW tool.', true); return; }
-      if (applyWithConfirm(data)) flash('Progress loaded.');
+      if (applyWithConfirm(data)) flash('Your saved work is open.');
     };
     reader.readAsText(f);
     e.target.value = '';
