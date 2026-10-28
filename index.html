@@ -52,15 +52,21 @@
         format: "Interactive tool" | "Guide" | "Worksheet" | "Templates",
         status: "available" | "pending" | "soon",
         href:   "./afw-tool-name.html",  // omit for "soon"
-        newTab: true                     // OPTIONAL — opens in a new tab
+        newTab: false                    // OPTIONAL — see below
       }
 
-    NOTE ON newTab: it is its own property. Do NOT try to put
-    target="blank" inside the href string — the quotes end the
-    string early and the whole script stops running, which blanks
-    every card on the page. (Also: the correct HTML value is
-    "_blank" with an underscore; plain "blank" just names a window.)
-    The card, its phase tags, and the filter behavior are all
+    NOTE ON newTab: every tool opens in a NEW TAB by default, so
+    you don't need this property at all. The hub stays open behind
+    the tool — members keep their place in the list, can open a
+    second tool without losing the first, and half-finished work in
+    a tool is never lost by hitting Back. Set newTab: false only if
+    some future entry must replace the page instead.
+      It is its own property. Do NOT try to put target="blank"
+    inside the href string — the quotes end the string early and
+    the whole script stops running, which blanks every card on the
+    page. (Also: the correct HTML value is "_blank" with an
+    underscore; plain "blank" just names a window.)
+      The card, its phase tags, and the filter behavior are all
     generated automatically. Nothing else needs editing.
 
   · LOGO SLOT: the header uses a typographic lockup. To use the
@@ -250,6 +256,14 @@
   .card.is-pending{border-style:dashed}
   .pending-note{font-size:.8rem;color:var(--ink-faint);font-style:italic;align-self:flex-start}
 
+  /* Announced by screen readers, invisible on screen — used to tell
+     people a link opens in a new tab, which is otherwise a silent
+     surprise for anyone not watching the window. */
+  .sr-only{
+    position:absolute;width:1px;height:1px;padding:0;margin:-1px;
+    overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap;border:0;
+  }
+
   .empty{
     display:none;margin-top:26px;
     background:var(--paper);border:1px dashed var(--line);border-radius:16px;
@@ -288,8 +302,11 @@
     </div>
   </header>
 
-  <!-- ACCOUNT: sign-in lives here, on the hub, on purpose. Signing
-       in once carries into every tool page on this site. -->
+  <!-- ACCOUNT: the same sign-in box every tool now shows. Signing in
+       here, or on any tool, carries across the whole site — and
+       because tools open in their own tabs, a tab that was open
+       before you signed in catches up on its own (see watchSession
+       in afw-cloud.js). -->
   <section class="account" aria-label="Your account">
     <div id="afw-account"></div>
     <div id="afw-saved"></div>
@@ -347,8 +364,7 @@ const TOOLS = [
     phases: ["readiness","create"],
     format: "Interactive tool",
     status: "available",
-    href: "./afw-hours-that-pay.html",
-    newTab: true
+    href: "./afw-hours-that-pay.html"
   },
   {
     name: "Food Cost & Pricing Tool",
@@ -381,6 +397,14 @@ const TOOLS = [
     format: "Interactive tool",
     status: "available",
     href: "./afw-path-to-first-sales.html"
+  },
+  {
+    name: "Catering Proposal Builder",
+    desc: "Answer an AFW catering referral with a clear menu, prices, and terms — ready to paste into an email.",
+    phases: ["create","incubate"],
+    format: "Interactive tool",
+    status: "available",
+    href: "./afw-catering-proposal-builder.html"
   },
   {
     name: "Prep List Builder",
@@ -480,7 +504,7 @@ function render(){
       <h3>${t.name}</h3>
       <p>${t.desc}</p>
       <div class="tags">${t.phases.map(p => `<span class="tag">${PHASE_LABEL[p]}</span>`).join("")}</div>
-      ${linkable ? `<a class="open" href="${t.href}"${t.newTab ? ` target="_blank" rel="noopener"` : ``}>Open</a>` : ""}
+      ${linkable ? `<a class="open" href="${t.href}"${t.newTab === false ? `` : ` target="_blank" rel="noopener"`}>Open${t.newTab === false ? `` : `<span class="sr-only"> (opens in a new tab)</span>`}</a>` : ""}
       ${pending ? `<span class="pending-note">Ask AFW staff — link coming soon</span>` : ""}
     </article>`;
   }).join("");
@@ -519,11 +543,17 @@ applyFilter("all");
   AFWCloud.mountAccountBar("#afw-account");
 
   /* Maps a saved item back to the tool that made it. The KEY must
-     match the "tool" value that tool passes to mountToolBar. */
+     match the "tool" value that tool passes to mountToolBar — a key
+     that's missing here still lists the member's saved work, but
+     with no Open button, so add every tool that can save. */
   AFWCloud.mountSavedWork("#afw-saved", {
-    "food-cost":   { name: "Food Cost & Pricing Tool", href: "./afw-food-cost-pricing.html" },
-    "sop-builder": { name: "SOP & Recipe Card Builder", href: "./afw-sop-builder.html" },
-    "prep-list":   { name: "Prep List Builder", href: "./afw-prep-list-builder.html" }
+    "food-cost":          { name: "Food Cost & Pricing Tool",   href: "./afw-food-cost-pricing.html" },
+    "sop-builder":        { name: "SOP & Recipe Card Builder",  href: "./afw-sop-builder.html" },
+    "hours-that-pay":     { name: "Hours-That-Pay Calculator",  href: "./afw-hours-that-pay.html" },
+    "first-order-sprint": { name: "Path to First Sales",        href: "./afw-path-to-first-sales.html" },
+    "presell-orders":     { name: "Pre-Sell Order Form",        href: "./afw-pre-sell-order-form.html" },
+    "catering-proposal":  { name: "Catering Proposal Builder",  href: "./afw-catering-proposal-builder.html" },
+    "prep-list":          { name: "Prep List Builder",          href: "./afw-prep-list-builder.html" }
   });
 </script>
 </body>

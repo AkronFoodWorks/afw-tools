@@ -69,6 +69,11 @@
     checklist, not a page of input boxes. Same pattern the SOP
     Builder uses for printAllBinder().
 
+  · TESTS: tests/prep-list-builder.test.cjs (jsdom) — covers the
+    amount parser, batch scaling, the pull-list combine, and the
+    committed-orders-only import rule. The page's functions are
+    plain globals, so the test reaches them off window.
+
   · No external dependencies beyond Google Fonts.
   ============================================================
 -->
@@ -1314,19 +1319,34 @@ SESSION_FIELDS.forEach(id => {
 /* ---------- init ---------- */
 items = [blankItem()];
 renderAll();
+
+// For tests and for staff poking around in the console.
+window.PLB = {
+  get items(){ return items; },
+  set items(v){ items = v; },
+  parseAmount, fmtAmount, fmtMinutes, normUnit, normName,
+  batchesFor, scaledIngredients, buildPullList, totalMinutes,
+  collectState, applyState, blankItem, blankIng, addItem,
+  detectImport, importFile, importOrders, sopToRecipe, costCardToRecipe, importBinder,
+  renderAll, renderSummary, buildPrintSheet
+};
 </script>
 
 <!-- ---------- cloud save (see afw-cloud.js) ---------- -->
 <script src="./afw-config.js"></script>
 <script src="./afw-cloud.js"></script>
 <script>
-  AFWCloud.mountToolBar("#afw-toolbar", {
-    tool:         "prep-list",          /* must match the key in index.html */
-    label:        "prep list",
-    serialize:    () => collectState(),
-    deserialize:  (data) => applyState(data),
-    suggestTitle: () => document.getElementById("sessionName").value || ""
-  });
+  /* Guarded: the tool is fully usable with cloud save absent (blank key in
+     afw-config.js, or the files not served at all) — it just loses the bar. */
+  if (typeof AFWCloud !== 'undefined' && typeof AFWCloud.mountToolBar === 'function'){
+    AFWCloud.mountToolBar("#afw-toolbar", {
+      tool:         "prep-list",          /* must match the key in index.html */
+      label:        "prep list",
+      serialize:    () => collectState(),
+      deserialize:  (data) => applyState(data),
+      suggestTitle: () => document.getElementById("sessionName").value || ""
+    });
+  }
 </script>
 </body>
 </html>
