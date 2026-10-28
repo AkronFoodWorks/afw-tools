@@ -52,6 +52,20 @@
     anything it can't parse is passed through verbatim with the
     multiplier shown next to it — never silently dropped.
 
+  · PREP ACTIONS: each ingredient carries an optional `prep` —
+    "minced", "thawed", "small dice". It never scales (six times
+    the garlic is still minced), so it just rides alongside the
+    amount. The reason it exists is the roll-up: buildActionList()
+    regroups every ingredient by its action across all items, so
+    the knife work happens once at the board instead of three
+    times across three recipes. The pull list deliberately ignores
+    prep when combining — that's the shopping trip, and you pull
+    the garlic once however it gets cut.
+      On import, members already write the action into the name
+    ("Garlic, minced"), so splitPrep() peels it off — but only
+    when the trailing clause names a real action (PREP_VERBS), so
+    "Chicken thigh, boneless" is left alone rather than guessed at.
+
   · PULL LIST combines identical ingredient+unit pairs only
     (after normalizing "lbs"→"lb" etc). It deliberately does NOT
     convert across units — a member who typed cups shouldn't get
@@ -236,9 +250,23 @@
     font-size:.68rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-faint);
   }
   @media (max-width:640px){.ing-head{display:none}}
-  .ing-row{display:grid;grid-template-columns:1fr 84px 96px 30px;gap:8px;margin-bottom:6px;align-items:center}
-  @media (max-width:640px){.ing-row{grid-template-columns:1fr 70px 80px 28px}}
+  /* The name cell stacks the ingredient over its prep action, so the row
+     stays four columns wide on a phone instead of five. */
+  .ing-row{display:grid;grid-template-columns:1fr 84px 96px 30px;gap:8px;margin-bottom:10px;align-items:start}
+  /* On a phone the fixed amount/unit columns leave the name too narrow to
+     read, so the name and its prep action take a full-width line of their
+     own and amount/unit/remove sit underneath. */
+  @media (max-width:640px){
+    .ing-row{grid-template-columns:1fr 1fr 28px;gap:8px 8px}
+    .ing-name-cell{grid-column:1 / -1}
+  }
+  .ing-name-cell{display:flex;flex-direction:column;gap:4px;min-width:0}
   .ing-row input{padding:7px 9px;border:1px solid var(--line);border-radius:7px;background:var(--paper);font-size:.88rem;min-width:0}
+  .ing-row input.f-ing-prep{
+    font-size:.8rem;font-style:italic;color:var(--ink-soft);
+    background:var(--cream);border-style:dashed;padding:5px 9px;
+  }
+  .ing-row input.f-ing-prep::placeholder{font-style:italic;color:var(--ink-faint)}
   .rm-ing-btn{
     border:none;background:transparent;color:var(--amber);font-weight:700;font-size:1rem;
     line-height:1;padding:5px;border-radius:6px;
@@ -262,7 +290,7 @@
     text-align:left;font-size:.66rem;font-weight:700;letter-spacing:.06em;text-transform:uppercase;
     color:var(--ink-faint);padding:0 0 5px;border-bottom:1px solid var(--line);
   }
-  .scale-table th.num,.scale-table td.num{text-align:right;white-space:nowrap}
+  .scale-table th.num,.scale-table td.num{text-align:right;white-space:nowrap;padding-left:12px}
   .scale-table td{padding:5px 0;border-bottom:1px dotted var(--line)}
   .scale-table td.need{font-weight:700;color:var(--green-deep)}
   .scale-table tr:last-child td{border-bottom:none}
@@ -287,6 +315,19 @@
     font-family:var(--display);font-size:.95rem;font-weight:600;color:var(--green-deep);
     padding-top:14px !important;
   }
+
+  /* prep actions */
+  .prep-tag{
+    display:inline-block;margin-left:8px;font-size:.74rem;font-style:italic;color:var(--amber);
+    background:rgba(200,97,46,.08);border-radius:5px;padding:1px 7px;vertical-align:baseline;
+  }
+  .action-group{margin-bottom:18px}
+  .action-group:last-child{margin-bottom:0}
+  .action-name{
+    font-family:var(--display);font-size:1.05rem;font-weight:600;color:var(--green-deep);
+    text-transform:capitalize;padding-bottom:5px;border-bottom:1.5px solid var(--line);
+  }
+  .action-group .pull-table td{font-size:.9rem}
 
   .add-row{
     margin-top:14px;padding:9px 16px;border-radius:9px;border:1.5px dashed var(--green);
@@ -345,6 +386,12 @@
   .ps-item-meta{font-size:.8rem;color:var(--ink-soft)}
   .ps-ings{margin:5px 0 0 25px;display:flex;flex-wrap:wrap;gap:4px 18px}
   .ps-ing{font-size:.86rem;display:flex;align-items:baseline;gap:6px}
+  .ps-ing i{font-style:italic;color:#555}
+  .ps-action{margin-bottom:12px;page-break-inside:avoid;break-inside:avoid}
+  .ps-action-name{
+    font-weight:700;font-size:.9rem;text-transform:capitalize;color:var(--green-deep);
+    border-bottom:1px solid var(--line);padding-bottom:2px;margin-bottom:2px;
+  }
   .ps-ing b{font-weight:700}
   .ps-note{margin:4px 0 0 25px;font-size:.82rem;font-style:italic;color:var(--ink-soft)}
   .ps-pull{width:100%;border-collapse:collapse;font-size:.9rem}
@@ -451,6 +498,12 @@
   </section>
 
   <section class="card">
+    <h2>Prep actions</h2>
+    <p class="sub">Everything that needs the same thing done to it, grouped — so all the mincing happens once at the board instead of three separate times. Add an action to any ingredient below its name.</p>
+    <div id="actionList"></div>
+  </section>
+
+  <section class="card">
     <h2>Pull list</h2>
     <p class="sub">Everything above, combined — walk the cooler and the dry rack once with this instead of hunting for one ingredient at a time. Same ingredient measured two ways stays on two lines; we don't convert your units behind your back.</p>
     <div id="pullList"></div>
@@ -487,9 +540,39 @@ const STAGES = {
 let items = [];
 let seq = 0;
 
-function blankIng(name, amount, unit){
+function blankIng(name, amount, unit, prep){
   seq += 1;
-  return { id:'g'+seq, name:name||'', amount:amount==null?'':String(amount), unit:unit||'', group:'ingredient' };
+  return { id:'g'+seq, name:name||'', amount:amount==null?'':String(amount), unit:unit||'', prep:prep||'', group:'ingredient' };
+}
+
+/* How an ingredient has to arrive at the dish — "minced", "thawed",
+   "small dice". Invariant under scaling: six times the garlic is still
+   minced. Kept beside the ingredient so it can also be rolled up across
+   every item, which is how knife work actually gets done — all at once. */
+const PREP_VERBS = new Set([
+  'minced','mince','diced','dice','cubed','cubes','chopped','chop','sliced','slice',
+  'julienned','julienne','chiffonade','brunoise','shredded','shred','grated','grate',
+  'zested','zest','peeled','peel','trimmed','trim','quartered','halved','crushed',
+  'ground','pounded','butterflied','scored','deboned','boned','portioned','cut',
+  'seeded','cored','stemmed','pitted','husked','shucked','cleaned','washed','rinsed',
+  'drained','strained','sifted','beaten','whisked','separated','blanched','toasted',
+  'roasted','soaked','marinated','thawed','defrosted','softened','melted','tempered',
+  'picked','trimmings','scaled','filleted','shaved','crumbled','torn','rough'
+]);
+
+/* Members already write the action into the ingredient name — "Garlic,
+   minced". Split it out only when the trailing clause actually names a
+   prep action, so "Chicken thigh, boneless" is left alone rather than
+   guessed at. */
+function splitPrep(rawName){
+  const name = String(rawName ?? '').trim();
+  const comma = name.lastIndexOf(',');
+  if (comma < 1) return { name, prep: '' };
+  const tail = name.slice(comma + 1).trim();
+  if (!tail) return { name, prep: '' };
+  const words = tail.toLowerCase().replace(/[^a-z\s-]/g, ' ').split(/[\s-]+/).filter(Boolean);
+  const isPrep = words.some(wd => PREP_VERBS.has(wd));
+  return isPrep ? { name: name.slice(0, comma).trim(), prep: tail } : { name, prep: '' };
 }
 
 function blankItem(){
@@ -596,6 +679,7 @@ function scaledIngredients(it){
     return {
       name: g.name,
       unit,
+      prep: (g.prep || '').trim(),
       group: g.group || 'ingredient',
       baseText: base ? fmtAmount(base.value) : (g.amount || '').trim(),
       need: scalable ? base.value * mult : null,
@@ -633,7 +717,11 @@ function stageOptions(sel){
 function ingRowHtml(g){
   return `
     <div class="ing-row" data-ing="${esc(g.id)}">
-      <input type="text" class="f-ing-name" value="${esc(g.name)}" placeholder="Ingredient" aria-label="Ingredient">
+      <div class="ing-name-cell">
+        <input type="text" class="f-ing-name" value="${esc(g.name)}" placeholder="Ingredient" aria-label="Ingredient">
+        ${g.group === 'packaging' ? '' :
+          `<input type="text" class="f-ing-prep" value="${esc(g.prep)}" placeholder="minced, thawed, small dice…" aria-label="Prep action">`}
+      </div>
       <input type="text" class="f-ing-amt" value="${esc(g.amount)}" placeholder="2" aria-label="Amount for one batch">
       <input type="text" class="f-ing-unit" value="${esc(g.unit)}" placeholder="lb" aria-label="Unit">
       <button type="button" class="rm-ing-btn no-print" title="Remove ingredient">×</button>
@@ -663,7 +751,7 @@ function calcHtml(it){
   const ingRows = rows.filter(r => r.group !== 'packaging');
   const body = grp => grp.map(r => `
     <tr>
-      <td>${esc(r.name) || '<span class="empty-note">(unnamed)</span>'}</td>
+      <td>${esc(r.name) || '<span class="empty-note">(unnamed)</span>'}${r.prep ? `<span class="prep-tag">${esc(r.prep)}</span>` : ''}</td>
       <td class="num">${esc(r.baseText)} ${esc(r.unit)}</td>
       <td class="num need ${r.verbatim ? 'verbatim' : ''}">${esc(r.needText)} ${r.verbatim ? '' : esc(r.unit)}</td>
     </tr>`).join('');
@@ -755,10 +843,11 @@ function renderItems(){
       const target = card.querySelector('[data-calc]');
       if (target) target.innerHTML = calcHtml(it);
       renderPullList();
+      renderActionList();
       renderSummary();
     };
 
-    card.querySelector('.f-name').addEventListener('input', e => { it.name = e.target.value; renderPullList(); });
+    card.querySelector('.f-name').addEventListener('input', e => { it.name = e.target.value; renderPullList(); renderActionList(); });
     card.querySelector('.f-qty').addEventListener('input', e => {
       it.qty = e.target.value === '' ? null : Number(e.target.value);
       refresh();
@@ -799,6 +888,8 @@ function renderItems(){
       const g = it.ings.find(x => x.id === row.dataset.ing);
       if (!g) return;
       row.querySelector('.f-ing-name').addEventListener('input', e => { g.name = e.target.value; refresh(); });
+      const prepInput = row.querySelector('.f-ing-prep');   /* packaging rows have none */
+      if (prepInput) prepInput.addEventListener('input', e => { g.prep = e.target.value; refresh(); });
       row.querySelector('.f-ing-amt').addEventListener('input', e => { g.amount = e.target.value; refresh(); });
       row.querySelector('.f-ing-unit').addEventListener('input', e => { g.unit = e.target.value; refresh(); });
       row.querySelector('.rm-ing-btn').addEventListener('click', () => {
@@ -823,18 +914,58 @@ function buildPullList(){
   items.forEach(it => {
     scaledIngredients(it).forEach(r => {
       if (!r.name.trim()) return;
+      /* Keyed without the prep action on purpose: this is the shopping
+         trip, and you pull the garlic once however it gets cut. The
+         actions ride along so the line can still name them. */
       const key = r.group + '|' + normName(r.name) + '|' + normUnit(r.unit);
       if (!map.has(key)){
-        map.set(key, { name:r.name.trim(), unit:r.unit.trim(), group:r.group, total:0, texts:[], from:[], anyVerbatim:false });
+        map.set(key, { name:r.name.trim(), unit:r.unit.trim(), group:r.group, total:0, texts:[], from:[], preps:[], anyVerbatim:false });
       }
       const row = map.get(key);
       if (r.verbatim){ row.anyVerbatim = true; if (r.needText) row.texts.push(r.needText); }
       else row.total += r.need;
       const label = it.name.trim() || 'Unnamed item';
       if (!row.from.includes(label)) row.from.push(label);
+      if (r.prep && !row.preps.includes(r.prep)) row.preps.push(r.prep);
     });
   });
   return [...map.values()];
+}
+
+/* The same ingredients regrouped by what has to be DONE to them, so all
+   the mincing happens once at the board instead of three times across
+   three recipes. Returns [{action, rows:[…]}], alphabetical by action. */
+function buildActionList(){
+  const map = new Map();
+  items.forEach(it => {
+    scaledIngredients(it).forEach(r => {
+      if (!r.prep || !r.name.trim()) return;
+      const action = r.prep;
+      const key = normName(action);
+      if (!map.has(key)) map.set(key, { action, rows:new Map() });
+      const group = map.get(key);
+      const rowKey = normName(r.name) + '|' + normUnit(r.unit);
+      if (!group.rows.has(rowKey)){
+        group.rows.set(rowKey, { name:r.name.trim(), unit:r.unit.trim(), total:0, texts:[], from:[], anyVerbatim:false });
+      }
+      const row = group.rows.get(rowKey);
+      if (r.verbatim){ row.anyVerbatim = true; if (r.needText) row.texts.push(r.needText); }
+      else row.total += r.need;
+      const label = it.name.trim() || 'Unnamed item';
+      if (!row.from.includes(label)) row.from.push(label);
+    });
+  });
+  return [...map.values()]
+    .map(g => ({ action: g.action, rows: [...g.rows.values()] }))
+    .sort((a, b) => a.action.localeCompare(b.action));
+}
+
+/* One ingredient's total, as text — "9 lb", or the verbatim amounts it
+   couldn't scale, or both. */
+function amountText(r){
+  const scaled = r.total > 0 ? fmtAmount(r.total) + (r.unit ? ' ' + r.unit : '') : '';
+  const loose = r.anyVerbatim ? r.texts.join(', ') : '';
+  return [scaled, loose].filter(Boolean).join(' + ');
 }
 
 function renderPullList(){
@@ -851,7 +982,7 @@ function renderPullList(){
     const extra = r.anyVerbatim ? `<span class="verbatim">${amt ? ' + ' : ''}${esc(r.texts.join(', '))}</span>` : '';
     return `
       <tr>
-        <td>${esc(r.name)}<div class="from">for ${esc(r.from.join(', '))}</div></td>
+        <td>${esc(r.name)}${r.preps.length ? `<span class="prep-tag">${esc(r.preps.join(' · '))}</span>` : ''}<div class="from">for ${esc(r.from.join(', '))}</div></td>
         <td class="num amt">${amt}${extra}</td>
       </tr>`;
   }).join('');
@@ -864,6 +995,29 @@ function renderPullList(){
         ${packs.length ? `<tr><td colspan="2" class="pull-group">Packaging</td></tr>${body(packs)}` : ''}
       </tbody>
     </table>`;
+}
+
+function renderActionList(){
+  const host = document.getElementById('actionList');
+  if (!host) return;
+  const groups = buildActionList();
+  if (!groups.length){
+    host.innerHTML = `<p class="empty-note">Add a prep action to an ingredient — "minced", "thawed", "small dice" — and every ingredient needing that same action lands here together.</p>`;
+    return;
+  }
+  host.innerHTML = groups.map(g => `
+    <div class="action-group">
+      <div class="action-name">${esc(g.action)}</div>
+      <table class="pull-table">
+        <tbody>
+          ${g.rows.map(r => `
+            <tr>
+              <td>${esc(r.name)}<div class="from">for ${esc(r.from.join(', '))}</div></td>
+              <td class="num amt">${esc(amountText(r))}</td>
+            </tr>`).join('')}
+        </tbody>
+      </table>
+    </div>`).join('');
 }
 
 /* ===================== SUMMARY + TIME CHECK ===================== */
@@ -1045,7 +1199,10 @@ function sopToRecipe(sop){
     source: 'SOP',
     ings: (Array.isArray(sop.ingredients) ? sop.ingredients : [])
       .filter(g => (g.name || '').trim())
-      .map(g => blankIng(g.name, g.amount, g.unit))
+      .map(g => {
+        const { name, prep } = splitPrep(g.name);
+        return blankIng(name, g.amount, g.unit, prep);
+      })
   };
 }
 
@@ -1055,7 +1212,10 @@ function sopToRecipe(sop){
 function costCardToRecipe(card){
   const ings = (Array.isArray(card.ingredients) ? card.ingredients : [])
     .filter(g => (g.name || '').trim())
-    .map(g => blankIng(g.name, g.uqty, g.uunit));
+    .map(g => {
+      const { name, prep } = splitPrep(g.name);
+      return blankIng(name, g.uqty, g.uunit, prep);
+    });
   const packs = (Array.isArray(card.packaging) ? card.packaging : [])
     .filter(p => (p.name || '').trim())
     .map(p => {
@@ -1175,7 +1335,7 @@ function applyState(data){
     merged.ings = (Array.isArray(o.ings) ? o.ings : []).map(g => ({
       ...blankIng(),
       ...g,
-      name: asText(g.name), amount: asText(g.amount), unit: asText(g.unit),
+      name: asText(g.name), amount: asText(g.amount), unit: asText(g.unit), prep: asText(g.prep),
       group: g.group === 'packaging' ? 'packaging' : 'ingredient'
     }));
     return merged;
@@ -1236,11 +1396,20 @@ function buildPrintSheet(){
           <span class="ps-item-meta">${bits.join(' · ')}</span>
         </div>
         ${rows.length ? `<div class="ps-ings">${rows.map(r =>
-          `<span class="ps-ing"><span class="ps-box"></span> ${esc(r.name)} <b>${esc(r.needText)}${r.verbatim ? '' : ' ' + esc(r.unit)}</b></span>`
+          `<span class="ps-ing"><span class="ps-box"></span> ${esc(r.name)} <b>${esc(r.needText)}${r.verbatim ? '' : ' ' + esc(r.unit)}</b>${r.prep ? `<i>${esc(r.prep)}</i>` : ''}</span>`
         ).join('')}</div>` : ''}
         ${it.notes ? `<div class="ps-note">${esc(it.notes)}</div>` : ''}
       </div>`;
   }).join('') : `<p class="ps-blank">Nothing on the list yet.</p>`;
+
+  const actions = buildActionList();
+  const actionHtml = actions.map(g => `
+    <div class="ps-action">
+      <div class="ps-action-name">${esc(g.action)}</div>
+      <table class="ps-pull">
+        ${g.rows.map(r => `<tr><td class="box"><span class="ps-box"></span></td><td>${esc(r.name)}</td><td class="num">${esc(amountText(r))}</td></tr>`).join('')}
+      </table>
+    </div>`).join('');
 
   const pull = buildPullList();
   const pullRow = r => {
@@ -1263,6 +1432,7 @@ function buildPrintSheet(){
     </div>
     <div class="ps-section">In the order you'll make them</div>
     ${itemHtml}
+    ${actions.length ? `<div class="ps-section">Prep actions — do each one once</div>${actionHtml}` : ''}
     <div class="ps-section">Pull list — grab it all in one trip</div>
     ${pullHtml}
     <div class="ps-foot">Built with the AFW Prep List Builder · Akron Food Works, a program of The Well CDC · Create · Incubate · Elevate</div>`;
@@ -1286,6 +1456,7 @@ function doPrint(){
 function renderAll(){
   renderItems();
   renderPullList();
+  renderActionList();
   renderSummary();
 }
 
@@ -1324,11 +1495,11 @@ renderAll();
 window.PLB = {
   get items(){ return items; },
   set items(v){ items = v; },
-  parseAmount, fmtAmount, fmtMinutes, normUnit, normName,
-  batchesFor, scaledIngredients, buildPullList, totalMinutes,
+  parseAmount, fmtAmount, fmtMinutes, normUnit, normName, splitPrep,
+  batchesFor, scaledIngredients, buildPullList, buildActionList, amountText, totalMinutes,
   collectState, applyState, blankItem, blankIng, addItem,
   detectImport, importFile, importOrders, sopToRecipe, costCardToRecipe, importBinder,
-  renderAll, renderSummary, buildPrintSheet
+  renderAll, renderSummary, renderActionList, buildPrintSheet
 };
 </script>
 

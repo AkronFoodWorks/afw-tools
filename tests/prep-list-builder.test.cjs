@@ -128,6 +128,104 @@ test('a unit typed into the amount box is still a unit', () => {
   assert.equal(rows[0].unit, 'oz');
 });
 
+/* ---------- prep actions ---------- */
+
+test('splitPrep peels a real action off the ingredient name', () => {
+  const w = load();
+  const garlic = w.PLB.splitPrep('Garlic, minced');
+  assert.equal(garlic.name, 'Garlic');
+  assert.equal(garlic.prep, 'minced');
+  const onion = w.PLB.splitPrep('Yellow onion, small dice');
+  assert.equal(onion.name, 'Yellow onion');
+  assert.equal(onion.prep, 'small dice');
+  const parsley = w.PLB.splitPrep('Parsley, finely chopped');
+  assert.equal(parsley.prep, 'finely chopped');
+});
+
+test('splitPrep leaves a description that is not an action alone', () => {
+  const w = load();
+  /* a trailing clause that names a kind, not a knife cut, stays in the name */
+  assert.equal(w.PLB.splitPrep('Chicken thigh, boneless').name, 'Chicken thigh, boneless');
+  assert.equal(w.PLB.splitPrep('Chicken thigh, boneless').prep, '');
+  assert.equal(w.PLB.splitPrep('Olive oil').prep, '');
+  assert.equal(w.PLB.splitPrep('').name, '');
+});
+
+test('a prep action survives scaling untouched', () => {
+  const w = load();
+  const it = itemWith(w, 36, 12, [['Garlic', 2, 'tbsp']]);
+  it.ings[0].prep = 'minced';
+  const row = w.PLB.scaledIngredients(it)[0];
+  assert.equal(row.needText, '6');      // six times the garlic...
+  assert.equal(row.prep, 'minced');     // ...is still minced
+});
+
+test('buildActionList gathers the same action across different items', () => {
+  const w = load();
+  const a = itemWith(w, 12, 12, [['Garlic', 2, 'tbsp'], ['Carrot', 1, 'lb']]);
+  a.ings[0].prep = 'minced';
+  a.ings[1].prep = 'small dice';
+  const b = itemWith(w, 24, 12, [['Garlic', 2, 'tbsp']]);
+  b.ings[0].prep = 'minced';
+  w.PLB.items = [a, b];
+
+  const groups = w.PLB.buildActionList();
+  assert.equal(groups.length, 2, 'one group per distinct action');
+  const minced = groups.find(g => g.action === 'minced');
+  assert.equal(minced.rows.length, 1, 'the same ingredient combines inside the group');
+  assert.equal(minced.rows[0].total, 6, '2 tbsp ×1 batch + 2 tbsp ×2 batches');
+  assert.equal(minced.rows[0].from.length, 2, 'and names both dishes it is for');
+});
+
+test('ingredients with no action stay off the action list', () => {
+  const w = load();
+  const it = itemWith(w, 12, 12, [['Garlic', 2, 'tbsp'], ['Olive oil', 1, 'cup']]);
+  it.ings[0].prep = 'minced';
+  w.PLB.items = [it];
+  const groups = w.PLB.buildActionList();
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].rows.length, 1);
+});
+
+test('the pull list combines across actions — you pull the garlic once', () => {
+  const w = load();
+  const a = itemWith(w, 12, 12, [['Garlic', 2, 'tbsp']]);
+  a.ings[0].prep = 'minced';
+  const b = itemWith(w, 12, 12, [['Garlic', 1, 'tbsp']]);
+  b.ings[0].prep = 'sliced';
+  w.PLB.items = [a, b];
+
+  const garlic = w.PLB.buildPullList().filter(r => r.name === 'Garlic');
+  assert.equal(garlic.length, 1, 'one shopping line, not one per cut');
+  assert.equal(garlic[0].total, 3);
+  assert.deepEqual([...garlic[0].preps].sort(), ['minced', 'sliced'], 'but it still names both cuts');
+});
+
+test('an action typed into an imported name becomes a real action', () => {
+  const w = load();
+  const recipe = w.PLB.costCardToRecipe({
+    productName: 'Jollof chicken', yieldQty: 12,
+    ingredients: [
+      { name: 'Garlic, minced', uqty: 2, uunit: 'tbsp' },
+      { name: 'Chicken thigh, boneless', uqty: 3, uunit: 'lb' }
+    ]
+  });
+  assert.equal(recipe.ings[0].name, 'Garlic');
+  assert.equal(recipe.ings[0].prep, 'minced');
+  assert.equal(recipe.ings[1].name, 'Chicken thigh, boneless');
+  assert.equal(recipe.ings[1].prep, '');
+});
+
+test('prep survives an export and reimport', () => {
+  const w = load();
+  const it = itemWith(w, 36, 12, [['Garlic', 2, 'tbsp']]);
+  it.ings[0].prep = 'minced';
+  w.PLB.items = [it];
+  w.PLB.applyState(JSON.parse(JSON.stringify(w.PLB.collectState())));
+  assert.equal(w.PLB.items[0].ings[0].prep, 'minced');
+  assert.equal(w.PLB.buildActionList()[0].action, 'minced');
+});
+
 /* ---------- pull list ---------- */
 
 test('buildPullList adds up the same ingredient across items', () => {
