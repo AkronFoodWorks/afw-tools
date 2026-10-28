@@ -485,6 +485,18 @@
     { id:'setup',       label:'Setup and breakdown',         short:'setup and breakdown',         charges:['flat','perHour'] }
   ];
   const CUSTOM_CHARGES = ['flat','perGuest','perHour'];
+
+  // AFW kitchen spaces at the DAYTIME rate, from the Rev 4/26 rate sheet —
+  // the same numbers as SPACES in afw-hours-that-pay.html. Update both
+  // together when the rate sheet changes. Bookings have a 2-hour minimum.
+  const KITCHEN_SPACES = [
+    { id:'elevate',     label:'Elevate Kitchen',              rate:19.25 },
+    { id:'create_side', label:'Create Kitchen, one side',     rate:19 },
+    { id:'create_full', label:'Create Kitchen, full room',    rate:25 },
+    { id:'prep',        label:'Prep Kitchen',                 rate:17.50 },
+    { id:'dish',        label:'Dishwashing / Mobile Cleanup', rate:15 }
+  ];
+  const KITCHEN_MIN_HOURS = 2;
   const CHARGE_LABEL = { flat:'Flat amount', perGuest:'Per guest', perHour:'Per hour', perMile:'Per mile' };
 
   const TERM_PRESETS = {
@@ -573,6 +585,7 @@
         paymentMethods:'', pricesGoodDays:null, noticeDays:null, depositOptionId:null
       },
       tax:{ mode:'none', type:'rate', rate:null, amount:null, includeExtras:true },
+      kitchen:{ hours:null, space:'', customRate:null },   // the member's own cost; never in the proposal
       wording:{ service:'', setup:'', payment:'' },
       reheating:'',
       sentToAfw:false
@@ -899,6 +912,17 @@
     const t = String(st.event.eventTitle || '').trim() || '[Event title]';
     const b = String(st.event.businessName || '').trim();
     return `${t} — catering proposal` + (b ? ` from ${b}` : '');
+  }
+
+  // Kitchen time: hours (2-hour minimum) × the space's daytime rate.
+  function kitchenCalc(st){
+    const k = st.kitchen || {};
+    const sp = KITCHEN_SPACES.find(x => x.id === k.space);
+    const rate = k.space === 'custom' ? cents(k.customRate) : sp ? Math.round(sp.rate * 100) : null;
+    const hrs = num(k.hours);
+    const billed = hrs > 0 ? Math.max(hrs, KITCHEN_MIN_HOURS) : null;
+    const cost = (rate !== null && billed !== null) ? Math.round(rate * billed) : null;
+    return { rate, hours:hrs, billed, cost, minApplied: billed !== null && billed > hrs, space:sp || null };
   }
 
   // ================= dates + deposit =================
@@ -1304,6 +1328,22 @@
           <span class="hint">Copying is quickest for a step up: keep everything and add dessert or an upgrade.</span>
         </div>` : ''}
         <p class="links">Not sure what to charge? Try the <a href="./afw-food-cost-pricing.html" target="_blank" rel="noopener">Food Cost &amp; Pricing Tool<span class="sr-only"> (opens in a new tab)</span></a>.</p>
+      </div>
+      <div class="card">
+        <h2>Your kitchen time</h2>
+        <p class="sub">Just for you — this isn’t in the proposal. It shows what’s left after your AFW kitchen time, so you can check your prices cover it.</p>
+        <div class="grid2">
+          ${inputField({ path:'kitchen.hours', label:'Hours in the kitchen', type:'num', placeholder:'4', hint:'Include setup and cleanup. Bookings have a 2-hour minimum.' })}
+          <div class="field"><label for="f_kitchen_space">Kitchen space (daytime rate)</label>
+            <select id="f_kitchen_space" data-bind="kitchen.space" data-type="text" data-rerender="1">
+              <option value="">Choose a space…</option>
+              ${KITCHEN_SPACES.map(k => `<option value="${k.id}"${S.kitchen.space === k.id ? ' selected' : ''}>${esc(k.label)} — ${money2(Math.round(k.rate * 100))}/hr</option>`).join('')}
+              <option value="custom"${S.kitchen.space === 'custom' ? ' selected' : ''}>Other rate…</option>
+            </select></div>
+        </div>
+        ${S.kitchen.space === 'custom' ? inputField({ path:'kitchen.customRate', label:'Your rate per hour', type:'num', pre:'$', placeholder:'19.25' }) : ''}
+        <p class="hint">Daytime rates from AFW’s rate sheet (Rev 4/26). Confirm current rates with staff.</p>
+        <div id="kitchenOut"></div>
       </div>`;
   }
 
@@ -1631,6 +1671,17 @@
         : 'No dishes tagged yet.')).join('<br>')}${diet.length ? '<br><span class="hint">Make sure at least one is a full meal, not just sides.</span>' : ''}
       ${other ? `${diet.length ? '<br>' : ''}• Other: ${other}${S.event.dietary.otherNote ? ' ' + esc(S.event.dietary.otherNote) : ''} requested — check this one yourself.` : ''}</div>` : '');
 
+    // kitchen time vs each package
+    const kc = kitchenCalc(S);
+    setHTML('kitchenOut', kc.cost === null ? '' : `<div class="soft">
+      Kitchen time: <b>${numText(kc.billed)} ${plural(kc.billed, 'hr')} × ${money2(kc.rate)}/hr = ${money2(kc.cost)}</b>${kc.minApplied ? ` <span class="hint">(counted as ${KITCHEN_MIN_HOURS} hours — the booking minimum)</span>` : ''}
+      ${S.options.map(o => {
+        const oc2 = optionCalc(S, o);
+        if (!oc2.rows.length || !oc2.allComplete) return `<br>${esc(pkgName(S, o))}: finish its prices to compare.`;
+        const before = oc2.total - (oc2.tax || 0), left = before - kc.cost;
+        return `<br>${esc(pkgName(S, o))}: ${money(before)}${oc2.tax ? ' before tax' : ''} − ${money2(kc.cost)} kitchen = <b${left < 0 ? ' style="color:var(--bad)"' : ''}>${money2(Math.abs(left))}${left < 0 ? ' short' : ' left'}</b>${left < 0 ? '' : ' for food, packaging, and your pay'}`;
+      }).join('')}</div>`);
+
     // extras
     S.extras.forEach((x, i) => {
       if (x.status !== 'extra') return;
@@ -1917,7 +1968,7 @@
   window.CPB = {
     get state(){ return S; },
     collectState, applyState, normalize, sampleState, blankState,
-    buildText, printHtml, subjectLine, pkgName, dietaryLines, optionCalc, itemCalc, extraCalc, panCalc, panCalcToItem, termFacts, checks, dietaryCheck,
+    buildText, printHtml, subjectLine, pkgName, kitchenCalc, dietaryLines, optionCalc, itemCalc, extraCalc, panCalc, panCalcToItem, termFacts, checks, dietaryCheck,
     autoPaymentLine, autoSetupLine, autoServiceLine, money, money2, refresh, renderAll,
     SERVING_GUIDE, FILE_VERSION
   };

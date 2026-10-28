@@ -516,3 +516,32 @@ test('Packages: no name needed; auto-numbered when there are several', () => {
   const c2 = win.CPB.checks(win.CPB.state, win.CPB.buildText(win.CPB.state)).find(c => c.title.startsWith('Every line'));
   assert.equal(c2.level, 'ok');
 });
+
+test('Kitchen time: daytime rates, 2-hour minimum, never in the proposal', () => {
+  const win = load();
+  const st = sampleIn(win);
+  const text = win.CPB.buildText(st);
+  st.kitchen = { hours:4, space:'elevate', customRate:null };
+  let k = win.CPB.kitchenCalc(st);
+  assert.equal(k.rate, 1925);
+  assert.equal(k.cost, 7700);                       // 4 × $19.25
+  st.kitchen = { hours:1, space:'create_full', customRate:null };
+  k = win.CPB.kitchenCalc(st);
+  assert.equal(k.billed, 2);                        // 2-hour minimum
+  assert.equal(k.minApplied, true);
+  assert.equal(k.cost, 5000);
+  st.kitchen = { hours:3, space:'custom', customRate:22.5 };
+  assert.equal(win.CPB.kitchenCalc(st).cost, 6750);
+  st.kitchen = { hours:3, space:'', customRate:null };
+  assert.equal(win.CPB.kitchenCalc(st).cost, null);
+  assert.equal(win.CPB.buildText(st), text);        // member's cost only
+  // on screen: what's left per package
+  st.kitchen = { hours:4, space:'elevate', customRate:null };
+  win.CPB.applyState(JSON.parse(JSON.stringify(st)));
+  const out = win.document.getElementById('kitchenOut').textContent.replace(/\s+/g, ' ');
+  assert.match(out, /4 hrs × \$19\.25\/hr = \$77\.00/);
+  assert.match(out, /Classic: \$526 − \$77\.00 kitchen = \$449\.00 left/);
+  assert.match(out, /Plus: \$626 − \$77\.00 kitchen = \$549\.00 left/);
+  // saved and reloaded
+  assert.deepEqual(JSON.parse(JSON.stringify(win.CPB.collectState().kitchen)), { hours:4, space:'elevate', customRate:null });
+});
