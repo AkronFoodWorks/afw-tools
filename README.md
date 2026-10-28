@@ -38,6 +38,7 @@ self-contained HTML file that works with or without an account.
    | `presell-orders`      | afw-pre-sell-order-form.html| member |
    | `first-order-sprint`  | afw-path-to-first-sales.html| member |
    | `catering-proposal`   | afw-catering-proposal-builder.html | member |
+   | `prep-list`           | afw-prep-list-builder.html  | member |
    | `readiness-inventory` | (pending)                   | member |
 
 2. **Login is always optional, and available everywhere.** No tool gates
