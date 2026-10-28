@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AFW — Load Sample Data</title>
+<meta name="robots" content="noindex">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,600;9..144,700&family=Hanken+Grotesk:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root { --afw-cream:#FAF5EA; --afw-forest:#1F3D2B; --afw-amber:#B7791F; }
+  * { box-sizing: border-box; }
+  body { margin:0; padding:24px 16px 64px; background:var(--afw-cream); color:var(--afw-forest);
+         font-family:'Hanken Grotesk', system-ui, sans-serif; }
+  .wrap { max-width:720px; margin:0 auto; }
+  h1 { font-family:'Fraunces', Georgia, serif; font-size:30px; margin:0 0 4px; }
+  .sub { margin:0 0 20px; opacity:.8; }
+  #afw-account { margin-bottom:20px; }
+  .card { background:#fff; border:1px solid rgba(31,61,43,.25); border-radius:12px; padding:20px; margin-bottom:16px; }
+  table { width:100%; border-collapse:collapse; }
+  td { padding:8px 4px; border-top:1px solid rgba(31,61,43,.12); vertical-align:top; }
+  td.st { text-align:right; white-space:nowrap; font-weight:600; }
+  .ok { color:#2f7a3b; } .skip { opacity:.6; } .bad { color:#b3261e; }
+  button { margin-top:16px; padding:10px 18px; font:inherit; font-weight:700; cursor:pointer;
+           border:none; border-radius:8px; background:var(--afw-forest); color:var(--afw-cream); }
+  button:disabled { opacity:.45; cursor:default; }
+  .note { margin-top:12px; font-size:14px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Load sample data</h1>
+  <p class="sub">Saves the Towpath Catering Co. example — the “Office lunch for 40” — into
+    every tool for whichever account is signed in, so each tool’s <b>Open saved</b> list
+    has a finished example in it. Meant for staff demo accounts, not members.</p>
+
+  <div id="afw-account"></div>
+
+  <div class="card">
+    <table id="list"></table>
+    <button id="go" disabled>Save all samples to this account</button>
+    <p class="note" id="msg">Sign in above first.</p>
+  </div>
+</div>
+
+<script src="../afw-config.js"></script>
+<script src="../afw-cloud.js"></script>
+<script src="towpath-sample-data.js"></script>
+<script>
+(function () {
+  var NAMES = {
+    'catering-proposal': 'Catering Proposal Builder', 'food-cost': 'Food Cost & Pricing',
+    'prep-list': 'Prep List Builder', 'sop-builder': 'SOP & Recipe Card Builder',
+    'presell-orders': 'Pre-Sell Order Form', 'first-order-sprint': 'Path to First Sales',
+    'hours-that-pay': 'Hours That Pay'
+  };
+  var list = document.getElementById('list');
+  var go = document.getElementById('go');
+  var msg = document.getElementById('msg');
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+
+  list.innerHTML = AFW_SAMPLES.map(function (s, i) {
+    return '<tr><td><b>' + esc(NAMES[s.tool] || s.tool) + '</b><br>' + esc(s.title) +
+           '</td><td class="st" id="st' + i + '"></td></tr>';
+  }).join('');
+  function mark(i, cls, text) { var c = document.getElementById('st' + i); c.className = 'st ' + cls; c.textContent = text; }
+
+  AFWCloud.mountAccountBar('#afw-account');
+  AFWCloud.onChange(function (user, status) {
+    go.disabled = status !== 'in';
+    msg.textContent = status === 'in' ? 'Signed in as ' + user.email + '. Samples will save to this account.'
+                                      : 'Sign in above first.';
+  });
+
+  /* Saving twice won't make duplicates: a sample whose title is already
+     in that tool's saved list is skipped. */
+  go.onclick = function () {
+    go.disabled = true;
+    msg.textContent = 'Saving…';
+    AFWCloud.list().then(function (rows) {
+      var have = {};
+      rows.forEach(function (r) { have[r.tool + '\n' + r.title] = true; });
+      return AFW_SAMPLES.reduce(function (p, s, i) {
+        return p.then(function () {
+          if (have[s.tool + '\n' + s.title]) { mark(i, 'skip', 'already saved'); return; }
+          return AFWCloud.save({ tool: s.tool, title: s.title, data: s.data })
+            .then(function () { mark(i, 'ok', 'saved ✓'); })
+            .catch(function (e) { mark(i, 'bad', (e && e.message) || 'failed'); });
+        });
+      }, Promise.resolve());
+    }).then(function () {
+      msg.innerHTML = 'Done. Open any tool and use <b>Open saved</b>, or see them all on the <a href="../index.html">hub</a>.';
+      go.disabled = false;
+    }).catch(function (e) {
+      msg.textContent = (e && e.message) || 'Something went wrong.';
+      go.disabled = false;
+    });
+  };
+})();
+</script>
+</body>
+</html>
