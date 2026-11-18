@@ -9,7 +9,7 @@ Turn the existing single-file HTML tools into hosted tools with optional member 
 ## Part 1 — Supabase project (~20 min)
 
 1. Create a free account at supabase.com and create a new project (name it `afw-tools`; pick the closest region, e.g. US East). Save the database password somewhere safe — you won't need it day-to-day.
-2. **Run the database setup:** Dashboard → SQL Editor → New query → paste the contents of `supabase-setup.sql` → Run. This creates the one `tool_data` table and the security rules.
+2. **Run the database setup:** Dashboard → SQL Editor → New query → paste the contents of `supabase-setup.sql` → Run. This creates the one `afw_saves` table (one row per saved item — a member can keep several named saves per tool) and the security rules that keep each member's saves private to them. The script is safe to re-run.
 3. **Get your keys:** Project Settings → API. Copy the **Project URL** and the **anon public** key into `afw-config.js`. (The anon key is meant to be public — the SQL you just ran is what protects member data.)
 4. **Allow your site's redirect URLs:** Authentication → URL Configuration.
    - Site URL: `https://tools.akronfoodworks.org` (or whatever the final subdomain is)
@@ -74,5 +74,5 @@ That's it — there's no autosave call to wire up. Saving is an explicit button 
 ## Later (not now)
 
 - **Staff view:** a second table + policy can later let AFW staff see member tool data (with consent) — useful for the facilitated Readiness check-ins. Deliberately out of scope for v1.
-- **Salesforce:** the `tool_data` table exports cleanly (Supabase → CSV/API) whenever program logic is finalized.
+- **Salesforce:** the `afw_saves` table exports cleanly (Supabase → CSV/API) whenever program logic is finalized.
 - **Normalizing the data:** stays as one JSON blob per tool until the unified data spine is designed. Don't normalize early.
